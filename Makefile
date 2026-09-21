@@ -55,8 +55,9 @@ install-dev: submodules
 
 test:
 	PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run --extra dev pytest \
-		tests/test_repo_layout.py \
-		tests/test_external_task_resolver.py
+		tests/test_external_task_resolver.py \
+		tests/test_object_poses_loader.py \
+		tests/test_rollout_wiring.py
 
 # ---- Docker image ------------------------------------------------------------
 build-isaaclab: submodules

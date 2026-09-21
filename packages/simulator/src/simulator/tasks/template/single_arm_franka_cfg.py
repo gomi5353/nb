@@ -210,9 +210,9 @@ class SingleArmFrankaTaskEnvCfg(ManagerBasedRLEnvCfg):
         # joint-space RL preset and are far too underdamped to track them, which
         # shows up as the arm ringing around every command. Use the stiffer gains
         # IsaacLab ships for IK control (FRANKA_PANDA_HIGH_PD_CFG).
-        for actuator_name in ("panda_shoulder", "panda_forearm"):
-            self.scene.robot.actuators[actuator_name].stiffness = 400.0
-            self.scene.robot.actuators[actuator_name].damping = 80.0
+        # for actuator_name in ("panda_shoulder", "panda_forearm"):
+        #     self.scene.robot.actuators[actuator_name].stiffness = 400.0
+        #     self.scene.robot.actuators[actuator_name].damping = 80.0
 
     def preprocess_device_action(self, action: dict[str, Any], teleop_device) -> torch.Tensor:
         if action.get("keyboard") is not None or action.get("gamepad") is not None:

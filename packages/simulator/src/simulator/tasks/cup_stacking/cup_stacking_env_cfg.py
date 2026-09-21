@@ -125,7 +125,7 @@ class CupStackingEnvCfg(SingleArmFrankaTaskEnvCfg):
         # in above z~1.3 from x~8.0 on -- so this is a raised three-quarter
         # view from the arm's left, clearing the cabinets and framing the whole
         # +-0.15 m cup jitter box with the arm entering from frame right.
-        self.scene.front.offset.pos = (7.80362, 6.78599, 1.1197),
+        self.scene.front.offset.pos = (7.80362, 6.78599, 1.1197)
         self.scene.front.offset.rot = (0.37025, 0.37025, -0.60242, -0.60242)
         self.scene.front.offset.convention = "opengl"
         self.scene.front.spawn.focal_length = 18.14756

@@ -9,8 +9,8 @@ description = "AICapstone simulator config layer on top of upstream leisaac."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "leisaac @ git+https://github.com/LightwheelAI/leisaac.git#subdirectory=source/leisaac",
-    "lerobot==0.4.2",
+    "leisaac @ git+https://github.com/LightwheelAI/leisaac.git@24d3bcd3f1e4585740fc79921782c41617237812#subdirectory=source/leisaac",
+    "lerobot==0.4.4",
 ]
 
 [tool.setuptools]

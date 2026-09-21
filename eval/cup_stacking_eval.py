@@ -15,6 +15,7 @@ from leisaac.utils.general_assets import parse_usd_and_create_subassets
 from leisaac.utils.domain_randomization import domain_randomization, randomize_object_uniform
 from simulator import ASSETS_ROOT
 from simulator.assets.scenes.kitchen import KITCHEN_CFG, KITCHEN_USD_PATH
+from simulator.utils.domain_randomization import randomize_light_conditions
 
 from simulator.tasks.template.single_arm_franka_cfg import (
     SingleArmFrankaObservationsCfg,
@@ -145,10 +146,11 @@ class CupStackingEvalEnvCfg(SingleArmFrankaTaskEnvCfg):
                         "z": (0.0, 0.0),
                     },
                 ),
+                randomize_light_conditions("light", textures=[], intensity_range=(1100, 1300)),
             ],
         )
 
-TASK_ID = "Private-CupStacking-Eval-v0"
+TASK_ID = "Public-CupStacking-Eval-v0"
 
 gym.register(
     id=TASK_ID,

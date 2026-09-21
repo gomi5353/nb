@@ -15,6 +15,7 @@ from leisaac.utils.general_assets import parse_usd_and_create_subassets
 from leisaac.utils.domain_randomization import domain_randomization, randomize_object_uniform
 from simulator import ASSETS_ROOT
 from simulator.assets.scenes.dining_room import DINING_ROOM_CFG, DINING_ROOM_USD_PATH
+from simulator.utils.domain_randomization import randomize_light_conditions
 
 from simulator.tasks.template.single_arm_franka_cfg import (
     SingleArmFrankaObservationsCfg,
@@ -51,9 +52,8 @@ PER_OBJECT_YAW_OFFSET: dict[str, float] = {
 # Plate is spawned at a fixed position (see RigidObjectCfg below) and not
 # loaded from object_poses.json; the JSON entry is silently skipped.
 IGNORED_OBJECT_NAMES: tuple[str, ...] = ("plate",)
-# Fixed plate world position. Robot is at (0.35, -0.74); plate sits in front of
-# it with ≥ 10 cm of free space on both ±x sides for fork (-x) and knife
-# (+x) drop targets (state machine uses `_PLACE_OFFSET = 0.10`).
+# Fixed plate world position. The plate sits in front of the robot with
+# sufficient free space on both x sides for the two drop targets.
 PLATE_WORLD_POS: tuple[float, float, float] = (7.0, 2.9, 0.74416)
 
 
@@ -92,7 +92,7 @@ class CutleryArrangementSceneCfg(SingleArmFrankaTaskSceneCfg):
             usd_path=str(DINING_OBJECTS_ROOT / "Knife" / "knife.usd"),
             mass_props=MassPropertiesCfg(mass=0.1),
         ),
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(6.75, 3.15, 0.75), rot=(0.0, 0.0, 0.0, 1.0)),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=(6.95, 3.15, 0.75), rot=(0.0, 0.0, 0.0, 1.0)),
     )
 
     fork: RigidObjectCfg = RigidObjectCfg(
@@ -205,11 +205,12 @@ class CutleryArrangementEnvCfg(SingleArmFrankaTaskEnvCfg):
                         "z": (0.0, 0.0),
                     },
                 ),
+                randomize_light_conditions("light", textures=[], intensity_range=(1100, 1300)),
             ],
         )
 
 
-TASK_ID = "Private-CutleruArrangement-Eval-v0"
+TASK_ID = "Public-CutleryArrangement-Eval-v0"
 
 gym.register(
     id=TASK_ID,

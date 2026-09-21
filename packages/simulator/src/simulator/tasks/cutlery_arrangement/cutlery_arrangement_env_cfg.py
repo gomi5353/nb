@@ -50,9 +50,8 @@ PER_OBJECT_YAW_OFFSET: dict[str, float] = {
 # Plate is spawned at a fixed position (see RigidObjectCfg below) and not
 # loaded from object_poses.json; the JSON entry is silently skipped.
 IGNORED_OBJECT_NAMES: tuple[str, ...] = ("plate",)
-# Fixed plate world position. Robot is at (0.35, -0.74); plate sits in front of
-# it with ≥ 10 cm of free space on both ±y sides for fork (left) and knife
-# (right) drop targets (state machine uses `_PLACE_Y_OFFSET = 0.10`).
+# Fixed plate world position. The plate sits in front of the robot with
+# sufficient free space on both y sides for the two drop targets.
 PLATE_WORLD_POS: tuple[float, float, float] = (7.0, 2.9, 0.74416) # (0.50, -0.40, 0.05)
 
 
@@ -130,8 +129,8 @@ def cutlery_arranged(
     done = torch.logical_and(done, fork_dist_xy <= max_dist_xy)
     done = torch.logical_and(done, knife_dist_xy <= max_dist_xy)
 
-    fork_on_left = fork_pos[:, 0] > plate_pos[:, 0]
-    knife_on_right = knife_pos[:, 0] < plate_pos[:, 0]
+    fork_on_left = fork_pos[:, 0] < plate_pos[:, 0]
+    knife_on_right = knife_pos[:, 0] > plate_pos[:, 0]
 
     done = torch.logical_and(done, fork_on_left)
     done = torch.logical_and(done, knife_on_right)

@@ -73,7 +73,12 @@ from isaaclab.app import AppLauncher
 parser = argparse.ArgumentParser(
     description="Synchronous LeRobot inference for LeIsaac simulation."
 )
-parser.add_argument("--task", type=str, default=None, help="Name of the task.")
+parser.add_argument(
+    "--task",
+    type=str,
+    default=None,
+    help="Task Gym id, evaluation .py file, or module:Class reference.",
+)
 parser.add_argument(
     "--step_hz", type=int, default=60, help="Environment stepping rate in Hz."
 )
