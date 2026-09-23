@@ -77,6 +77,7 @@ launch-isaaclab: build-isaaclab
 		--ulimit stack=67108864 \
 		-v $(shell pwd):/workspace/aicapstone \
 		-v /workspace/aicapstone/.venv \
+		-v $(shell pwd)/datasets:/root/.cache/huggingface/lerobot \
 		-v /tmp/.X11-unix:/tmp/.X11-unix:rw \
 		-v /usr/share/vulkan/icd.d:/usr/share/vulkan/icd.d:ro \
 		-v /etc/vulkan/icd.d:/etc/vulkan/icd.d:ro \
@@ -111,6 +112,7 @@ launch-isaaclab-glowsai-4090: build-isaaclab
 		--shm-size=16g \
 		-v $(shell pwd):/workspace/aicapstone \
 		-v /workspace/aicapstone/.venv \
+		-v $(shell pwd)/datasets:/root/.cache/huggingface/lerobot \
 		-v /home/glows/.Xauthority:/root/.Xauthority:ro \
 		-v /tmp/.X11-unix:/tmp/.X11-unix:rw \
 		-v /opt/VirtualGL:/opt/VirtualGL:ro \
@@ -150,6 +152,7 @@ launch-isaaclab-glowsai-l40s: build-isaaclab
 		--shm-size=16g \
 		-v $(shell pwd):/workspace/aicapstone \
 		-v /workspace/aicapstone/.venv \
+		-v $(shell pwd)/datasets:/root/.cache/huggingface/lerobot \
 		-v /home/glows/.Xauthority:/root/.Xauthority:ro \
 		-v /tmp/.X11-unix:/tmp/.X11-unix:rw \
 		-v /opt/VirtualGL:/opt/VirtualGL:ro \
