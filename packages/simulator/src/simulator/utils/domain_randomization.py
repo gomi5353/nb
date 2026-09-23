@@ -5,9 +5,8 @@ from typing import TYPE_CHECKING
 
 import torch
 
-from isaaclab.assets import AssetBase
 from isaaclab.managers import EventTermCfg as EventTerm
-from isaaclab.managers import SceneEntityCfg
+from isaaclab.managers import ManagerTermBase, SceneEntityCfg
 from isaaclab.utils.assets import NVIDIA_NUCLEUS_DIR
 
 if TYPE_CHECKING:
@@ -28,27 +27,53 @@ DEFAULT_HDR_TEXTURES = [
 ]
 
 
-def _randomize_domelight(
-    env: ManagerBasedEnv,
-    env_ids: torch.Tensor,
-    intensity_range: tuple[float, float],
-    color_variation: float,
-    textures: list[str],
-    asset_cfg: SceneEntityCfg = SceneEntityCfg("light"),
-):
-    asset: AssetBase = env.scene[asset_cfg.name]
-    light_prim = asset.prims[0]
+class randomize_light(ManagerTermBase):
+    """Randomize a USD light (DomeLight, RectLight, ...) on each reset.
 
-    new_intensity = random.uniform(intensity_range[0], intensity_range[1])
-    light_prim.GetAttribute("inputs:intensity").Set(new_intensity)
+    Samples come from a private RNG seeded with ``env.cfg.seed`` and the asset
+    name, so the lighting sequence is reproducible for a given seed and is not
+    shifted by other consumers of the global ``random`` state (policy, other
+    events). Each env in ``env_ids`` gets its own sample.
+    """
 
-    offsets = [random.uniform(-color_variation, color_variation) for _ in range(3)]
-    avg = sum(offsets) / 3
-    new_color = tuple(max(0.0, min(1.0, 0.75 + o - avg)) for o in offsets)
-    light_prim.GetAttribute("inputs:color").Set(new_color)
+    def __init__(self, cfg: EventTerm, env: ManagerBasedEnv):
+        super().__init__(cfg, env)
+        asset_name = cfg.params["asset_cfg"].name
+        seed = env.cfg.seed if env.cfg.seed is not None else 0
+        self._rng = random.Random(f"{seed}:{asset_name}")
 
-    if textures:
-        light_prim.GetAttribute("inputs:texture:file").Set(random.choice(textures))
+    def __call__(
+        self,
+        env: ManagerBasedEnv,
+        env_ids: torch.Tensor | None,
+        intensity_range: tuple[float, float],
+        color_variation: float,
+        textures: list[str],
+        color_temperature_range: tuple[float, float] | None = None,
+        asset_cfg: SceneEntityCfg = SceneEntityCfg("light"),
+    ):
+        prims = env.scene[asset_cfg.name].prims
+        # A global (non env-scoped) light has a single prim shared by all envs.
+        if len(prims) == 1 or env_ids is None:
+            ids = range(len(prims))
+        else:
+            ids = sorted(env_ids.tolist())
+
+        rng = self._rng
+        for i in ids:
+            prim = prims[i]
+            prim.GetAttribute("inputs:intensity").Set(rng.uniform(*intensity_range))
+
+            offsets = [rng.uniform(-color_variation, color_variation) for _ in range(3)]
+            avg = sum(offsets) / 3
+            prim.GetAttribute("inputs:color").Set(tuple(max(0.0, min(1.0, 0.75 + o - avg)) for o in offsets))
+
+            if color_temperature_range is not None:
+                prim.GetAttribute("inputs:enableColorTemperature").Set(True)
+                prim.GetAttribute("inputs:colorTemperature").Set(rng.uniform(*color_temperature_range))
+
+            if textures:
+                prim.GetAttribute("inputs:texture:file").Set(rng.choice(textures))
 
 
 def randomize_light_conditions(
@@ -56,14 +81,16 @@ def randomize_light_conditions(
     intensity_range: tuple[float, float] = (1500.0, 3000.0),
     color_variation: float = 0.4,
     textures: list[str] | None = None,
+    color_temperature_range: tuple[float, float] | None = None,
 ) -> EventTerm:
     return EventTerm(
-        func=_randomize_domelight,
+        func=randomize_light,
         mode="reset",
         params={
             "asset_cfg": SceneEntityCfg(name),
             "intensity_range": intensity_range,
             "color_variation": color_variation,
             "textures": textures if textures is not None else DEFAULT_HDR_TEXTURES,
+            "color_temperature_range": color_temperature_range,
         },
     )

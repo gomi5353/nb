@@ -62,6 +62,8 @@ configure_seed(42)
 @configclass
 class CutleryArrangementSceneCfg(SingleArmFrankaTaskSceneCfg):
     scene: AssetBaseCfg = DINING_ROOM_CFG.replace(prim_path="{ENV_REGEX_NS}/Scene")
+    # RectLight baked into nycu_light_collider_wooden.usd (/root/RectLight); wrap the existing prim.
+    rect_light: AssetBaseCfg = AssetBaseCfg(prim_path="{ENV_REGEX_NS}/Scene/RectLight")
 
     diningtable: AssetBaseCfg = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/Scene/diningtable",
@@ -205,7 +207,13 @@ class CutleryArrangementEnvCfg(SingleArmFrankaTaskEnvCfg):
                         "z": (0.0, 0.0),
                     },
                 ),
-                randomize_light_conditions("light", textures=[], intensity_range=(1100, 1300)),
+                randomize_light_conditions(
+                    "rect_light",
+                    intensity_range=(2500.0, 8000.0),
+                    color_variation=0.0,
+                    textures=[],
+                    color_temperature_range=(3000.0, 6500.0),
+                ),
             ],
         )
 
