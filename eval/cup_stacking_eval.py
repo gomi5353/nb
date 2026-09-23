@@ -100,6 +100,7 @@ class CupStackingEvalEnvCfg(SingleArmFrankaTaskEnvCfg):
     observations: SingleArmFrankaObservationsCfg = SingleArmFrankaObservationsCfg()
     terminations: EvalTerminationsCfg = EvalTerminationsCfg()
     task_description: str = "pick up the blue cup and place it on the pink cup."
+    tracked_object_names: list[str] = ["blue_cup", "pink_cup"]
 
     def __post_init__(self) -> None:
         super().__post_init__()

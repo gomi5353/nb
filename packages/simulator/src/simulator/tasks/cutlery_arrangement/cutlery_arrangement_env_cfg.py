@@ -161,6 +161,7 @@ class CutleryArrangementEnvCfg(SingleArmFrankaTaskEnvCfg):
     observations: SingleArmFrankaObservationsCfg = SingleArmFrankaObservationsCfg()
     terminations: TerminationsCfg = TerminationsCfg()
     task_description: str = "place the fork on the left and knife on the right of the plate."
+    tracked_object_names: list[str] = ["fork", "knife", "plate"]
 
     def __post_init__(self) -> None:
         super().__post_init__()

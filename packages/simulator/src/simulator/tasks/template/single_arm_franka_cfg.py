@@ -22,6 +22,7 @@ from leisaac.enhance.datasets.lerobot_dataset_handler import LeRobotDatasetCfg
 from simulator.assets.robots.franka import FRANKA_PANDA_CFG
 from simulator import FRANKA_JOINT_NAMES
 from simulator.utils.object_poses_loader import ObjectPoseConfig
+from simulator.utils.object_pose_recording import object_poses_from_episode
 
 from . import mdp
 
@@ -175,6 +176,8 @@ class SingleArmFrankaTaskEnvCfg(ManagerBasedRLEnvCfg):
     default_feature_joint_names: list[str] = MISSING
     task_description: str = MISSING
     teleop_target_frame: str = "panda_hand"
+    tracked_object_names: list[str] = []
+    """Rigid objects recorded as ``object_pose.<name>`` dataset columns for data verification."""
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -234,4 +237,5 @@ class SingleArmFrankaTaskEnvCfg(ManagerBasedRLEnvCfg):
                 continue
             camera_key = frame_key.split(".")[-1]
             frame[frame_key] = obs_data[camera_key][-1].cpu().numpy()
+        frame.update(object_poses_from_episode(episode_data, dataset_cfg.features))
         return frame
