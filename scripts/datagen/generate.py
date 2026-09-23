@@ -181,9 +181,7 @@ def _replace_recorder_manager(env, env_cfg, args_cli):
     del env.recorder_manager
     if args_cli.use_lerobot_recorder:
         from leisaac.enhance.datasets.lerobot_dataset_handler import LeRobotDatasetCfg
-        from leisaac.enhance.managers.lerobot_recorder_manager import (
-            LeRobotRecorderManager,
-        )
+        from simulator.utils.object_pose_recording import LeRobotRecorderManager
 
         dataset_cfg = LeRobotDatasetCfg(
             repo_id=args_cli.lerobot_dataset_repo_id,
@@ -311,13 +309,19 @@ def _on_episode_done(
         )
         print(f"Recorded {current_recorded_demo_count} successful demonstrations.")
 
+    # RecorderManager exports the episode from its pre-reset hook.  In
+    # particular, LeRobotRecorderManager.finalize() only finalizes the dataset
+    # writer; it does not export an episode that never reached reset.  Always
+    # reset here, including after the final attempt, so the final successful
+    # episode is flushed to parquet/video before leaving the loop.
+    env.reset()
+    sm.reset()
+    auto_terminate(env, False)
+
     if next_episode_idx >= total_episodes:
         print(f"Completed all {total_episodes} episodes. Exiting the app.")
         return next_episode_idx, current_recorded_demo_count, start_record_state, True, success
 
-    env.reset()
-    sm.reset()
-    auto_terminate(env, False)
     if episodes[next_episode_idx]:
         _apply_episode_poses(env, episodes[next_episode_idx])
     next_episode_idx += 1
