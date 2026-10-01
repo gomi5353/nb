@@ -4,11 +4,12 @@ End-to-end guide for the AI Capstone imitation-learning pipeline: generating syn
 
 ## Overview
 
-This project builds imitation-learning policies for robot manipulation tasks (cup stacking, cutlery arrangement, toy blocks collection). The pipeline has three stages:
+This project builds imitation-learning policies for robot manipulation tasks (cup stacking, cutlery arrangement, toy blocks collection). The pipeline has four stages:
 
 1. **Simulate** — generate synthetic training data in Isaac Lab with preconfigured domain randomization
 2. **Train** a policy model with LeRobot
 3. **Evaluate** the trained policy in the simulator (rollout)
+4. **Verify and diagnose** whether the dataset covers the conditions needed by the task
 
 ## Where to run what
 
@@ -111,7 +112,7 @@ All remaining commands in this step run **inside the container**.
 
 ### Run data generation
 
-Each task ships with preconfigured domain randomization: object poses are re-randomized at every environment reset, so no recorded pose file is needed. `--num_demos` sets the number of randomized episodes to run, and `--use_lerobot_recorder` saves the result in LeRobot dataset format. Only successful episodes are exported.
+Each task ships with preconfigured domain randomization: object poses are re-randomized at every environment reset, so no recorded pose file is needed. `--num_demos` sets the number of randomized episodes to run, and `--use_lerobot_recorder` saves the result in [LeRobot dataset format](https://huggingface.co/docs/lerobot/main/en/lerobot-dataset-v3#format-design). Only successful episodes are exported.
 
 Available tasks:
 - `HCIS-CupStacking-SingleArm-v0`
@@ -135,7 +136,7 @@ The dataset lands in `~/.cache/huggingface/lerobot/${HF_USER}/<repo_id>/`.
 ### Upload the generated dataset
 
 ```bash
-hf upload ${HF_USER}/<repo_id> ~/.cache/huggingface/lerobot/${HF_USER}/<repo_id>/
+hf upload ${HF_USER}/<repo_id> ./datasets/${HF_USER}/<repo_id>/
 ```
 
 For the full data generation pipeline reference, see [Synthetic Data Generation Pipeline](synthetic_data_generation.md).
@@ -209,6 +210,27 @@ For the full procedure including model download and flag reference, see [LeRobot
 
 ---
 
+## Step 4: Data Verification — Why Did the Policy Fail?
+
+A failed rollout does not automatically mean that the model architecture or training strategy is the
+problem. Instead, first inspect whether the training dataset covers the conditions that
+appeared during evaluation. To help user verify their collected data, we provide **object-pose coverage** 
+as a complete example from Star-Gen taxonomy. It records each object's pose in the [LeRobot v3 dataset](https://huggingface.co/docs/lerobot/main/en/lerobot-dataset-v3#format-design), describes the coverage
+requirement in RDF/OWL, and uses SHACL to report which spatial cells have too few
+episodes. Follow [Object Pose Coverage](object_pose_coverage.md) to record the
+required columns, write a Turtle specification, and run the checker.
+
+Coverage is a diagnostic, not proof of the cause: an uncovered evaluation region
+is evidence of a possible data-distribution gap, while complete coverage does not
+guarantee that a policy will succeed.
+
+If your hypothesis concerns a different factor, you can also select it from Star-Gen taxonomy, and follow
+[Adding a New Dataset Coverage Factor](adding_coverage_factor.md). It explains the
+full extension path from recording a LeRobot feature through RDF graph mapping,
+OWL vocabulary, SHACL counting rules, reports, and tests.
+
+---
+
 ## See Also
 
 | Document | Description |
@@ -220,3 +242,5 @@ For the full procedure including model download and flag reference, see [LeRobot
 | [LeRobot Checkpoint Format](lerobot-model-format.md) | Understanding model checkpoint structure |
 | [Standalone Env Config Export](standalone_env_config_export.md) | Exporting environment configs as standalone files |
 | [Synthetic Data Generation Pipeline](synthetic_data_generation.md) | Full datagen pipeline reference |
+| [Object Pose Coverage](object_pose_coverage.md) | Check whether initial object poses cover a required spatial region |
+| [Adding a New Dataset Coverage Factor](adding_coverage_factor.md) | Extend verification to lighting, viewpoint, orientation, or another factor |
