@@ -175,6 +175,68 @@ def load_episode_poses(
     return episodes
 
 
+def load_object_poses(
+    path: str | Path,
+    config: ObjectPoseConfig,
+) -> dict[str, WorldPose]:
+    """Load the single-episode legacy object-pose schema.
+
+    The current export is handled by :func:`load_episode_poses`. This
+    compatibility entry point keeps the small ``{anchor_tag_id, objects}``
+    schema usable for standalone task checks and older pose sidecars.
+    """
+    json_path = Path(path)
+    data = _read_json(json_path)
+    _validate_anchor(json_path, data, config.anchor_tag_id)
+    objects = data["objects"]
+    if not isinstance(objects, list):
+        raise ObjectPosesError(
+            f"{json_path}: 'objects' must be a list, got {type(objects).__name__}"
+        )
+
+    anchor_x, anchor_y, anchor_yaw = config.anchor_world_pose
+    cos_a = math.cos(anchor_yaw)
+    sin_a = math.sin(anchor_yaw)
+    known_tags = set(config.tag_to_object)
+    poses: dict[str, WorldPose] = {}
+    for idx, entry in enumerate(objects):
+        tag_id, x_a, y_a, yaw_a = _parse_object_entry(json_path, idx, entry)
+        if tag_id == config.anchor_tag_id:
+            continue
+        if tag_id not in known_tags:
+            raise ObjectPosesError(
+                f"{json_path}: unknown tag_id {tag_id}; known tags are {sorted(known_tags)}"
+            )
+        name = config.tag_to_object[tag_id]
+        if name in config.ignored_object_names:
+            continue
+        if name in poses:
+            raise ObjectPosesError(f"{json_path}: duplicate tag_id {tag_id} / object {name!r}")
+
+        x_w = anchor_x + cos_a * x_a - sin_a * y_a
+        y_w = anchor_y + sin_a * x_a + cos_a * y_a
+        yaw_w = anchor_yaw + config.per_object_yaw_offset.get(name, 0.0)
+        if not config.use_fixed_yaw:
+            yaw_w += yaw_a
+        poses[name] = (
+            (x_w, y_w, float(config.object_z)),
+            _euler_xyz_to_quat_wxyz(config.object_roll, config.object_pitch, yaw_w),
+        )
+
+    required = known_tags - {
+        tag_id
+        for tag_id, name in config.tag_to_object.items()
+        if name in config.ignored_object_names
+    }
+    present = {tag_id for tag_id, name in config.tag_to_object.items() if name in poses}
+    missing = required - present
+    if missing:
+        raise ObjectPosesError(
+            f"{json_path}: missing required tag(s) {sorted(missing)}"
+        )
+    return poses
+
+
 def _parse_episode_object(
     json_path: Path, ep_idx: int, obj_idx: int, obj: object
 ) -> tuple[str, tuple[float, float, float], tuple[float, float, float]]:

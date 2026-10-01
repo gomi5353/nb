@@ -1,0 +1,127 @@
+# SHACL rules for object pose coverage.
+#
+# Severity:
+#   sh:Violation - dataset fails verification (malformed data, uncovered cell)
+#   sh:Warning   - reported, does not fail unless --strict (placement outside
+#                  the required region: allowed, it just does not count)
+#
+# All episodes count toward coverage, whether the recorded attempt succeeded
+# or failed: coverage is about which initial scenes the data shows.
+
+@prefix dv:   <urn:aicapstone:dv#> .
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+
+dv: a owl:Ontology ;
+    sh:declare [ sh:prefix "dv" ; sh:namespace "urn:aicapstone:dv#"^^xsd:anyURI ] .
+
+# ---- Episode: one initial placement per required object ---------------------
+
+dv:EpisodeShape a sh:NodeShape ;
+    sh:targetClass dv:Episode ;
+    sh:property [
+        sh:path dv:episodeIndex ;
+        sh:datatype xsd:integer ; sh:minCount 1 ; sh:maxCount 1 ;
+    ] ;
+    sh:sparql [
+        sh:message "Episode has no initial pose for required object '{?name}'" ;
+        sh:prefixes dv: ;
+        sh:select """
+            SELECT $this ?name WHERE {
+                ?req a dv:CoverageRequirement ; dv:forObject ?obj .
+                ?obj dv:objectName ?name .
+                FILTER NOT EXISTS { $this dv:hasInitialPlacement ?p . ?p dv:ofObject ?obj . }
+            }
+        """ ;
+    ] ;
+    sh:sparql [
+        sh:message "Episode has more than one initial pose for object '{?name}'" ;
+        sh:prefixes dv: ;
+        sh:select """
+            SELECT $this ?name WHERE {
+                $this dv:hasInitialPlacement ?p1, ?p2 .
+                ?p1 dv:ofObject ?obj . ?p2 dv:ofObject ?obj .
+                ?obj dv:objectName ?name .
+                FILTER (STR(?p1) < STR(?p2))
+            }
+        """ ;
+    ] .
+
+# ---- Placement: well-formed numbers, inside the required region -------------
+
+dv:ObjectPlacementShape a sh:NodeShape ;
+    sh:targetClass dv:ObjectPlacement ;
+    sh:property [ sh:path dv:ofObject ; sh:class dv:TaskObject ; sh:minCount 1 ; sh:maxCount 1 ] ;
+    sh:property [ sh:path dv:x ; sh:datatype xsd:double ; sh:minCount 1 ; sh:maxCount 1 ] ;
+    sh:property [ sh:path dv:y ; sh:datatype xsd:double ; sh:minCount 1 ; sh:maxCount 1 ] ;
+    sh:property [ sh:path dv:z ; sh:datatype xsd:double ; sh:minCount 1 ; sh:maxCount 1 ] .
+
+# Severity is a property of the shape, so the region check gets its own shape.
+dv:ObjectPlacementRegionShape a sh:NodeShape ;
+    sh:targetClass dv:ObjectPlacement ;
+    sh:severity sh:Warning ;
+    sh:sparql [
+        sh:message "Initial pose of '{?name}' at ({?x}, {?y}) is outside the required region; it does not count toward coverage" ;
+        sh:prefixes dv: ;
+        sh:select """
+            SELECT $this ?name ?x ?y WHERE {
+                $this dv:ofObject ?obj ; dv:x ?x ; dv:y ?y .
+                ?obj dv:objectName ?name .
+                ?req a dv:CoverageRequirement ; dv:forObject ?obj ;
+                     dv:xMin ?x0 ; dv:xMax ?x1 ; dv:yMin ?y0 ; dv:yMax ?y1 .
+                FILTER (?x < ?x0 || ?x > ?x1 || ?y < ?y0 || ?y > ?y1)
+            }
+        """ ;
+    ] .
+
+# ---- Requirement: well-formed spec ------------------------------------------
+
+dv:CoverageRequirementShape a sh:NodeShape ;
+    sh:targetClass dv:CoverageRequirement ;
+    sh:property [ sh:path dv:forObject ; sh:class dv:TaskObject ; sh:minCount 1 ; sh:maxCount 1 ] ;
+    sh:property [ sh:path dv:targetsAxis ; sh:hasValue dv:ObjectPoseAxis ] ;
+    sh:property [ sh:path dv:xMin ; sh:minCount 1 ; sh:maxCount 1 ] ;
+    sh:property [ sh:path dv:xMax ; sh:minCount 1 ; sh:maxCount 1 ] ;
+    sh:property [ sh:path dv:yMin ; sh:minCount 1 ; sh:maxCount 1 ] ;
+    sh:property [ sh:path dv:yMax ; sh:minCount 1 ; sh:maxCount 1 ] ;
+    sh:property [ sh:path dv:gridX ; sh:minCount 1 ; sh:maxCount 1 ; sh:minInclusive 1 ] ;
+    sh:property [ sh:path dv:gridY ; sh:minCount 1 ; sh:maxCount 1 ; sh:minInclusive 1 ] ;
+    sh:property [ sh:path dv:minEpisodesPerCell ; sh:minCount 1 ; sh:maxCount 1 ; sh:minInclusive 0 ] ;
+    sh:sparql [
+        sh:message "Coverage region is empty: xMin must be < xMax and yMin < yMax" ;
+        sh:prefixes dv: ;
+        sh:select """
+            SELECT $this WHERE {
+                $this dv:xMin ?x0 ; dv:xMax ?x1 ; dv:yMin ?y0 ; dv:yMax ?y1 .
+                FILTER (?x0 >= ?x1 || ?y0 >= ?y1)
+            }
+        """ ;
+    ] .
+
+# ---- Cell: the coverage rule itself -----------------------------------------
+# A placement is in a cell when xMin <= x < xMax (<= xMax on the last column),
+# same for y. Cells with fewer placements than minEpisodesPerCell fail.
+
+dv:CoverageCellShape a sh:NodeShape ;
+    sh:targetClass dv:CoverageCell ;
+    sh:sparql [
+        sh:message "'{?name}' cell (i={?i}, j={?j}) x=[{?x0}, {?x1}] y=[{?y0}, {?y1}] has {?n} episode(s); needs at least {?min}" ;
+        sh:prefixes dv: ;
+        sh:select """
+            SELECT $this ?name ?i ?j ?x0 ?x1 ?y0 ?y1 ?min (COUNT(DISTINCT ?p) AS ?n) WHERE {
+                $this dv:ofRequirement ?req ; dv:cellI ?i ; dv:cellJ ?j ;
+                      dv:xMin ?x0 ; dv:xMax ?x1 ; dv:yMin ?y0 ; dv:yMax ?y1 ;
+                      dv:xMaxInclusive ?xi ; dv:yMaxInclusive ?yi .
+                ?req dv:forObject ?obj ; dv:minEpisodesPerCell ?min .
+                ?obj dv:objectName ?name .
+                OPTIONAL {
+                    ?p dv:ofObject ?obj ; dv:x ?x ; dv:y ?y .
+                    FILTER (?x >= ?x0 && (?x < ?x1 || (?xi && ?x = ?x1)) &&
+                            ?y >= ?y0 && (?y < ?y1 || (?yi && ?y = ?y1)))
+                }
+            }
+            GROUP BY $this ?name ?i ?j ?x0 ?x1 ?y0 ?y1 ?min
+            HAVING (COUNT(DISTINCT ?p) < ?min)
+        """ ;
+    ] .

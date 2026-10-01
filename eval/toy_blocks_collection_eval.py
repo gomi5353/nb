@@ -14,6 +14,7 @@ from leisaac.utils.domain_randomization import domain_randomization, randomize_o
 from leisaac.utils.general_assets import parse_usd_and_create_subassets
 from simulator import ASSETS_ROOT
 from simulator.assets.scenes.living_room import LIVING_ROOM_CFG, LIVING_ROOM_USD_PATH
+from simulator.utils.domain_randomization import randomize_light_conditions
 from simulator.tasks.template.single_arm_franka_cfg import (
     SingleArmFrankaObservationsCfg,
     SingleArmFrankaTaskEnvCfg,
@@ -45,6 +46,8 @@ configure_seed(42)
 @configclass
 class ToyBlocksCollectionEvalSceneCfg(SingleArmFrankaTaskSceneCfg):
     scene: AssetBaseCfg = LIVING_ROOM_CFG.replace(prim_path="{ENV_REGEX_NS}/Scene")
+    # RectLight baked into nycu_light_collider_wooden.usd (/root/RectLight); wrap the existing prim.
+    rect_light: AssetBaseCfg = AssetBaseCfg(prim_path="{ENV_REGEX_NS}/Scene/RectLight")
 
     table: AssetBaseCfg = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/Scene/table",
@@ -157,6 +160,7 @@ class ToyBlocksCollectionEvalEnvCfg(SingleArmFrankaTaskEnvCfg):
     observations: SingleArmFrankaObservationsCfg = SingleArmFrankaObservationsCfg()
     terminations: EvalTerminationsCfg = EvalTerminationsCfg()
     task_description: str = "pick up the toys and place them into the storage box."
+    tracked_object_names: list[str] = ["green_block", "blue_block", "red_block", "storage_box"]
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -214,11 +218,18 @@ class ToyBlocksCollectionEvalEnvCfg(SingleArmFrankaTaskEnvCfg):
                         "z": (0.0, 0.0),
                     },
                 ),
+                randomize_light_conditions(
+                    "rect_light",
+                    intensity_range=(2500.0, 8000.0),
+                    color_variation=0.0,
+                    textures=[],
+                    color_temperature_range=(3000.0, 6500.0),
+                ),
             ],
         )
 
 
-TASK_ID = "Private-ToyBlocksCollection-Eval-v0"
+TASK_ID = "Public-ToyBlocksCollection-Eval-v0"
 
 gym.register(
     id=TASK_ID,

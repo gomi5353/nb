@@ -73,11 +73,21 @@ from isaaclab.app import AppLauncher
 parser = argparse.ArgumentParser(
     description="Synchronous LeRobot inference for LeIsaac simulation."
 )
-parser.add_argument("--task", type=str, default=None, help="Name of the task.")
+parser.add_argument(
+    "--task",
+    type=str,
+    default=None,
+    help="Task Gym id, evaluation .py file, or module:Class reference.",
+)
 parser.add_argument(
     "--step_hz", type=int, default=60, help="Environment stepping rate in Hz."
 )
-parser.add_argument("--seed", type=int, default=None, help="Seed of the environment.")
+parser.add_argument(
+    "--seed",
+    type=int,
+    default=42,
+    help="Seed of the environment. Drives object-pose and lighting randomization; keep fixed to replicate results.",
+)
 parser.add_argument(
     "--episode_length_s", type=float, default=60.0, help="Episode length in seconds."
 )
@@ -507,7 +517,8 @@ def main():
     policy_task_type = "franka_panda" if robot_name == "franka_panda" else task_type
     teleop_device = "keyboard" if policy_task_type == "franka_panda" else task_type
     env_cfg.use_teleop_device(teleop_device)
-    env_cfg.seed = args_cli.seed if args_cli.seed is not None else int(time.time())
+    env_cfg.seed = args_cli.seed
+    print(f"[rollout] seed = {env_cfg.seed}", flush=True)
     env_cfg.episode_length_s = args_cli.episode_length_s
 
     if args_cli.eval_rounds <= 0:

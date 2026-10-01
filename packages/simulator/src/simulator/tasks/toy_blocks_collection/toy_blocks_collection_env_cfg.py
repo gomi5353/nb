@@ -170,6 +170,7 @@ class ToyBlocksCollectionEnvCfg(SingleArmFrankaTaskEnvCfg):
     observations: SingleArmFrankaObservationsCfg = SingleArmFrankaObservationsCfg()
     terminations: TerminationsCfg = TerminationsCfg()
     task_description: str = "pick up the toys and place them into the storage box."
+    tracked_object_names: list[str] = ["green_block", "blue_block", "red_block", "storage_box"]
 
     def __post_init__(self) -> None:
         super().__post_init__()

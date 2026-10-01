@@ -10,7 +10,8 @@ readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10, <3.12"
 dependencies = [
-    "umi",
+    "lerobot==0.4.4",
+    "data-verification",
 ]
 
 [project.optional-dependencies]
@@ -20,10 +21,10 @@ dev = [
 ]
 
 [tool.uv.workspace]
-members = ["packages/umi"]
+members = ["packages/data_verification"]
 
 [tool.uv.sources]
-umi = { workspace = true }
+data-verification = { workspace = true }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

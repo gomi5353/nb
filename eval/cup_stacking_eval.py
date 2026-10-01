@@ -15,6 +15,7 @@ from leisaac.utils.general_assets import parse_usd_and_create_subassets
 from leisaac.utils.domain_randomization import domain_randomization, randomize_object_uniform
 from simulator import ASSETS_ROOT
 from simulator.assets.scenes.kitchen import KITCHEN_CFG, KITCHEN_USD_PATH
+from simulator.utils.domain_randomization import randomize_light_conditions
 
 from simulator.tasks.template.single_arm_franka_cfg import (
     SingleArmFrankaObservationsCfg,
@@ -38,6 +39,8 @@ configure_seed(42)
 @configclass
 class CupStackingEvalSceneCfg(SingleArmFrankaTaskSceneCfg):
     scene: AssetBaseCfg = KITCHEN_CFG.replace(prim_path="{ENV_REGEX_NS}/Scene")
+    # RectLight baked into nycu_light_collider_wooden.usd (/root/RectLight); wrap the existing prim.
+    rect_light: AssetBaseCfg = AssetBaseCfg(prim_path="{ENV_REGEX_NS}/Scene/RectLight")
     blue_cup: RigidObjectCfg = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Scene/blue_cup",
         spawn=sim_utils.UsdFileCfg(
@@ -97,6 +100,7 @@ class CupStackingEvalEnvCfg(SingleArmFrankaTaskEnvCfg):
     observations: SingleArmFrankaObservationsCfg = SingleArmFrankaObservationsCfg()
     terminations: EvalTerminationsCfg = EvalTerminationsCfg()
     task_description: str = "pick up the blue cup and place it on the pink cup."
+    tracked_object_names: list[str] = ["blue_cup", "pink_cup"]
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -145,10 +149,17 @@ class CupStackingEvalEnvCfg(SingleArmFrankaTaskEnvCfg):
                         "z": (0.0, 0.0),
                     },
                 ),
+                randomize_light_conditions(
+                    "rect_light",
+                    intensity_range=(2500.0, 8000.0),
+                    color_variation=0.0,
+                    textures=[],
+                    color_temperature_range=(3000.0, 6500.0),
+                ),
             ],
         )
 
-TASK_ID = "Private-CupStacking-Eval-v0"
+TASK_ID = "Public-CupStacking-Eval-v0"
 
 gym.register(
     id=TASK_ID,

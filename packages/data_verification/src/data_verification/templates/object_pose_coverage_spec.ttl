@@ -1,0 +1,42 @@
+# Object pose coverage spec (template).
+#
+# You decide what "enough coverage" means for your dataset. Fill in every
+# "TODO" below, then run:
+#
+#   uv run python scripts/verify_object_pose_coverage.py check \
+#       --dataset <your dataset> --spec <this file>
+#
+# Guide: docs/object_pose_coverage.md
+#
+# Units and frame: metres, env-local frame (the same frame as the
+# object_pose.<name> dataset columns and the task cfg's init_state.pos).
+#
+# One block per object you want checked. Delete a block to stop checking that
+# object; copy a block to check another one. Objects without a block are
+# recorded but never checked.
+
+@prefix dv:   <urn:aicapstone:dv#> .
+@prefix spec: <urn:aicapstone:spec:mine#> .
+
+# --- BEGIN OBJECT ---
+spec:OBJECT_NAME a dv:TaskObject ;
+    # Must match the dataset column name object_pose.OBJECT_NAME.
+    dv:objectName "OBJECT_NAME" .
+
+spec:OBJECT_NAME_coverage a dv:CoverageRequirement ;
+    dv:targetsAxis dv:ObjectPoseAxis ;
+    dv:forObject spec:OBJECT_NAME ;
+
+    # Workspace rectangle your data should cover: where this object may start.
+    # Numbers, e.g. 8.80 (not quoted).
+    dv:xMin "TODO" ; dv:xMax "TODO" ;
+    dv:yMin "TODO" ; dv:yMax "TODO" ;
+
+    # Grid over the rectangle: number of cells along x and along y.
+    # Cell size = (xMax - xMin) / gridX. Whole numbers, e.g. 3.
+    dv:gridX "TODO" ; dv:gridY "TODO" ;
+
+    # Minimum number of episodes whose initial placement falls inside each
+    # cell. Whole number, e.g. 2.
+    dv:minEpisodesPerCell "TODO" .
+# --- END OBJECT ---

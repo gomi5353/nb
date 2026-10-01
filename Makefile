@@ -55,8 +55,10 @@ install-dev: submodules
 
 test:
 	PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run --extra dev pytest \
-		tests/test_repo_layout.py \
-		tests/test_external_task_resolver.py
+		tests/test_external_task_resolver.py \
+		tests/test_object_poses_loader.py \
+		tests/test_rollout_wiring.py \
+		tests/test_object_pose_coverage.py
 
 # ---- Docker image ------------------------------------------------------------
 build-isaaclab: submodules
@@ -76,6 +78,7 @@ launch-isaaclab: build-isaaclab
 		--ulimit stack=67108864 \
 		-v $(shell pwd):/workspace/aicapstone \
 		-v /workspace/aicapstone/.venv \
+		-v $(shell pwd)/datasets:/root/.cache/huggingface/lerobot \
 		-v /tmp/.X11-unix:/tmp/.X11-unix:rw \
 		-v /usr/share/vulkan/icd.d:/usr/share/vulkan/icd.d:ro \
 		-v /etc/vulkan/icd.d:/etc/vulkan/icd.d:ro \
@@ -110,6 +113,7 @@ launch-isaaclab-glowsai-4090: build-isaaclab
 		--shm-size=16g \
 		-v $(shell pwd):/workspace/aicapstone \
 		-v /workspace/aicapstone/.venv \
+		-v $(shell pwd)/datasets:/root/.cache/huggingface/lerobot \
 		-v /home/glows/.Xauthority:/root/.Xauthority:ro \
 		-v /tmp/.X11-unix:/tmp/.X11-unix:rw \
 		-v /opt/VirtualGL:/opt/VirtualGL:ro \
@@ -149,6 +153,7 @@ launch-isaaclab-glowsai-l40s: build-isaaclab
 		--shm-size=16g \
 		-v $(shell pwd):/workspace/aicapstone \
 		-v /workspace/aicapstone/.venv \
+		-v $(shell pwd)/datasets:/root/.cache/huggingface/lerobot \
 		-v /home/glows/.Xauthority:/root/.Xauthority:ro \
 		-v /tmp/.X11-unix:/tmp/.X11-unix:rw \
 		-v /opt/VirtualGL:/opt/VirtualGL:ro \
