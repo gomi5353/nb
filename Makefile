@@ -2,13 +2,19 @@
 	submodules submodules-pull \
 	build-isaaclab launch-isaaclab \
 	launch-isaaclab-glowsai-4090 launch-isaaclab-glowsai-l40s \
-	check-isaaclab-gpu
+	check-isaaclab-gpu fix-perms
 
 # ---- Config ------------------------------------------------------------------
 IMAGE          ?= leisaac-isaaclab:latest
 DOCKERFILE     ?= Dockerfile
 GPU            ?= all
 CONTAINER_NAME ?= isaaclab
+# The container runs as root; files it writes into the bind mount are root-owned
+# (LeRobot videos are even 0600). Hand these dirs back to the host user.
+HOST_UID       ?= $(shell id -u)
+HOST_GID       ?= $(shell id -g)
+OWNED_DIRS     ?= /workspace/aicapstone/datasets /workspace/aicapstone/obj_cvg_exps /workspace/aicapstone/outputs
+restore_ownership = chown -R $(HOST_UID):$(HOST_GID) $(OWNED_DIRS) 2>/dev/null || true
 
 # ---- Shared shell snippets ---------------------------------------------------
 # Pick first existing NVIDIA Vulkan ICD and export VK_ICD_FILENAMES.
@@ -97,7 +103,9 @@ launch-isaaclab: build-isaaclab
 			$(select_vulkan_icd); \
 			$(require_runtime_libs); \
 			cd /workspace/aicapstone; \
-			exec /bin/bash \
+			/bin/bash || true; \
+			echo "== restoring host ownership of $(OWNED_DIRS) =="; \
+			$(restore_ownership); \
 		'
 
 # ---- Launch: GlowsAI RTX 4090 (VNC display :1) ------------------------------
@@ -137,7 +145,9 @@ launch-isaaclab-glowsai-4090: build-isaaclab
 			$(select_vulkan_icd); \
 			$(require_runtime_libs); \
 			cd /workspace/aicapstone; \
-			exec /bin/bash \
+			/bin/bash || true; \
+			echo "== restoring host ownership of $(OWNED_DIRS) =="; \
+			$(restore_ownership); \
 		'
 
 # ---- Launch: GlowsAI L40S (VirtualGL + VNC display :1) -----------------------
@@ -180,8 +190,15 @@ launch-isaaclab-glowsai-l40s: build-isaaclab
 			$(select_vulkan_icd); \
 			$(require_runtime_libs); \
 			cd /workspace/aicapstone; \
-			exec /bin/bash \
+			/bin/bash || true; \
+			echo "== restoring host ownership of $(OWNED_DIRS) =="; \
+			$(restore_ownership); \
 		'
+
+# ---- Ownership ---------------------------------------------------------------
+# Run while the container is up (e.g. before lerobot-train on the host). No host sudo needed.
+fix-perms:
+	docker exec $(CONTAINER_NAME) sh -c '$(restore_ownership)'
 
 # ---- GPU sanity check --------------------------------------------------------
 check-isaaclab-gpu:
