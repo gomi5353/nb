@@ -179,7 +179,7 @@ Before you call your env config "exported":
 For private leaderboard tasks, secret eval scenes, and per-student variants
 the env config must stay **out of the public `aicapstone` tree**.
 `scripts/rollout.py` accepts `--task` in three forms, resolved by
-`simulator.tasks.external.resolve_task` (see AUT-80):
+`simulator.tasks.external.resolve_task`:
 
 | Form | Example |
 |---|---|
@@ -199,7 +199,7 @@ from simulator.tasks.cup_stacking.cup_stacking_env_cfg import CupStackingEnvCfg
 
 @configclass
 class PrivateCupStackingSmokeEnvCfg(CupStackingEnvCfg):
-    task_description: str = "AUT-85 private smoke."
+    task_description: str = "Private smoke test."
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -216,7 +216,7 @@ gym.register(
 )
 ```
 
-### 4.1 Reproducing the AUT-85 smoke locally
+### 4.1 Reproducing the private smoke test locally
 
 From the host:
 

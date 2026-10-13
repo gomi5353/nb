@@ -4,8 +4,7 @@
 # (https://github.com/LightwheelAI/leisaac/blob/main/scripts/evaluation/policy_inference.py
 # @ SHA 6b933e80786a69eb27d47503d11725c9c846566e), trimmed to local LeRobot
 # inference and extended with a dual-viewport setup, a debug shape printer,
-# and an in-process LeRobotSyncPolicy. Entry point lives at the top of
-# `scripts/` (NOT under `scripts/evaluation/`) per AUT-81.
+# and an in-process LeRobotSyncPolicy.
 
 """Run local LeRobot policy inference in the same process as Isaac Sim."""
 
@@ -181,7 +180,7 @@ from simulator import FRANKA_JOINT_NAMES
 
 
 def setup_dual_viewports():
-    """Setup dual viewports: main perspective view and GoPro camera view."""
+    """Setup dual viewports: wrist camera view and front camera view."""
     perspective_path = "/World/envs/env_0/Robot/panda_hand/wrist"
 
     # Get main viewport window

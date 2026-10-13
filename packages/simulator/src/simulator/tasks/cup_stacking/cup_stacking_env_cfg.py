@@ -12,7 +12,6 @@ from isaaclab.utils import configclass
 from leisaac.utils.general_assets import parse_usd_and_create_subassets
 from leisaac.utils.domain_randomization import domain_randomization, randomize_object_uniform
 from simulator import ASSETS_ROOT
-from simulator.utils.object_poses_loader import ObjectPoseConfig
 from simulator.assets.scenes.kitchen import KITCHEN_CFG, KITCHEN_USD_PATH
 from simulator.utils.domain_randomization import randomize_light_conditions
 
@@ -24,13 +23,6 @@ from simulator.tasks.template.single_arm_franka_cfg import (
 )
 
 KITCHEN_OBJECTS_ROOT = ASSETS_ROOT / "scenes" / "kitchen" / "objects"
-
-TAG_TO_OBJECT: dict[int, str] = {1: "blue_cup", 2: "pink_cup"}
-ANCHOR_TAG_ID: int = 0
-ANCHOR_WORLD_POSE: tuple[float, float, float] = (0.5, -0.2, 0.0)
-OBJECT_Z: float = 1.0
-OBJECT_ROLL: float = 0.0
-OBJECT_PITCH: float = 0.0
 
 
 @configclass

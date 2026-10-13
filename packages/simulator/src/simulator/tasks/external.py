@@ -7,8 +7,6 @@ Accepts three input forms and returns a registered ``gymnasium`` task id:
 3. A ``module:Class`` reference whose import side-effect registers the task,
    or whose ``module:Class`` string equals an existing task's
    ``env_cfg_entry_point``.
-
-See ``AUT-80`` for the design rationale.
 """
 
 from __future__ import annotations

@@ -23,7 +23,6 @@ packages/simulator/**/output/
 packages/simulator/**/outputs/
 packages/simulator/**/videos/
 packages/simulator/**/wandb/
-packages/umi/.cache/
 
 # IsaacLab submodule build artifacts
 dependencies/IsaacLab/logs/

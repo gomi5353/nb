@@ -26,13 +26,6 @@ from simulator.tasks.template.single_arm_franka_cfg import (
 
 KITCHEN_OBJECTS_ROOT = ASSETS_ROOT / "scenes" / "kitchen" / "objects"
 
-TAG_TO_OBJECT: dict[int, str] = {1: "blue_cup", 2: "pink_cup"}
-ANCHOR_TAG_ID: int = 0
-ANCHOR_WORLD_POSE: tuple[float, float, float] = (0.0, 0.0, 0.0)
-OBJECT_Z: float = 1.0
-OBJECT_ROLL: float = 0.0
-OBJECT_PITCH: float = 0.0
-
 
 configure_seed(42)
 

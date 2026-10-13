@@ -27,18 +27,6 @@ LIVING_OBJECTS_ROOT = ASSETS_ROOT / "scenes" / "living_room" / "objects"
 TABLE_USD = str(ASSETS_ROOT / "scenes" / "table_0000" / "table_0000.usd")
 TABLE_WORLD_POS: tuple[float, float, float] = (3.3, 1.1, 0.183)
 
-TAG_TO_OBJECT: dict[int, str] = {1: "green_block", 2: "blue_block", 3: "red_block"}
-ANCHOR_TAG_ID: int = 0
-ANCHOR_WORLD_POSE: tuple[float, float, float] = (0.35, 0.0, 0.0)
-
-OBJECT_ROLL: float = 0.0
-OBJECT_PITCH: float = 0.0
-PER_OBJECT_YAW_OFFSET: dict[str, float] = {
-    "green_block": math.pi / 2.0,
-    "blue_block": math.pi / 2.0,
-    "red_block": math.pi / 2.0,
-}
-
 
 configure_seed(42)
 

@@ -13,7 +13,7 @@ CONTAINER_NAME ?= isaaclab
 # (LeRobot videos are even 0600). Hand these dirs back to the host user.
 HOST_UID       ?= $(shell id -u)
 HOST_GID       ?= $(shell id -g)
-OWNED_DIRS     ?= /workspace/aicapstone/datasets /workspace/aicapstone/obj_cvg_exps /workspace/aicapstone/outputs
+OWNED_DIRS     ?= /workspace/aicapstone/datasets /workspace/aicapstone/outputs
 restore_ownership = chown -R $(HOST_UID):$(HOST_GID) $(OWNED_DIRS) 2>/dev/null || true
 
 # ---- Shared shell snippets ---------------------------------------------------

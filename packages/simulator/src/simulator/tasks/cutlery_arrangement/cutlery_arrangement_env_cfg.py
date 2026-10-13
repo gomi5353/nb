@@ -33,23 +33,6 @@ DININGTABLE_USD = str(
 DININGTABLE_WORLD_POS: tuple[float, float, float] = (7.0, 3.5, 0.354)
 DININGTABLE_WORLD_ROT: tuple[float, float, float, float] = ( 0.70711, 0.0, 0.0, -0.70711)
 
-TAG_TO_OBJECT: dict[int, str] = {2: "knife", 3: "fork"}
-ANCHOR_TAG_ID: int = 0
-# Anchor for fork/knife spawns; placed away from the fixed plate so the cutlery
-# starts well clear of the plate area.
-ANCHOR_WORLD_POSE: tuple[float, float, float] = (0.40, 0.10, 0.0)
-OBJECT_ROLL: float = 0.0
-OBJECT_PITCH: float = 0.0
-# Per-USD yaw correction (rad) so the spawned object matches its visual heading
-# under the gripper's coordinate convention. Tune once per USD by viewing the
-# spawned object and the printed yaw side-by-side.
-PER_OBJECT_YAW_OFFSET: dict[str, float] = {
-    "knife": math.pi,
-    "fork": 2.0 * math.pi,
-}
-# Plate is spawned at a fixed position (see RigidObjectCfg below) and not
-# loaded from object_poses.json; the JSON entry is silently skipped.
-IGNORED_OBJECT_NAMES: tuple[str, ...] = ("plate",)
 # Fixed plate world position. The plate sits in front of the robot with
 # sufficient free space on both y sides for the two drop targets.
 PLATE_WORLD_POS: tuple[float, float, float] = (7.0, 2.9, 0.74416) # (0.50, -0.40, 0.05)

@@ -124,7 +124,8 @@ RUN python -m pip install --upgrade \
         toml==0.10.2 \
         packaging==24.2
 
-RUN printf "numpy==1.26.0\n" > /tmp/sim-constraints.txt \
+# Newer pyarrow (e.g. 26) requires NumPy 2; Isaac Sim needs numpy 1.26, and datasets (LeRobot) needs pyarrow>=21.
+RUN printf "numpy==1.26.0\npyarrow==21.0.0\n" > /tmp/sim-constraints.txt \
     && python -m pip install --use-deprecated=legacy-resolver \
         --no-build-isolation \
         -c /tmp/sim-constraints.txt \

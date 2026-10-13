@@ -29,19 +29,6 @@ LIVING_OBJECTS_ROOT = ASSETS_ROOT / "scenes" / "living_room" / "objects"
 TABLE_USD = str(ASSETS_ROOT / "scenes" / "table_0000" / "table_0000.usd")
 TABLE_WORLD_POS: tuple[float, float, float] = (3.3, 1.1, 0.183)
 
-TAG_TO_OBJECT: dict[int, str] = {1: "green_block", 2: "blue_block", 3: "red_block"}
-ANCHOR_TAG_ID: int = 0
-ANCHOR_WORLD_POSE: tuple[float, float, float] = (0.35, 0.0, 0.0)
-OBJECT_ROLL: float = 0.0
-OBJECT_PITCH: float = 0.0
-# Per-USD yaw correction (rad) so the spawned object matches its visual heading
-# under the gripper's coordinate convention. Tag-to-mesh alignment differs per
-# asset; tune until ``data.root_quat_w`` matches what you see in the viewport.
-PER_OBJECT_YAW_OFFSET: dict[str, float] = {
-    "green_block": math.pi / 2.0,
-    "blue_block": math.pi / 2.0,
-    "red_block": math.pi / 2.0,
-}
 
 # Storage box: 0.36348 (SDF mesh, can't convex hull, object will float on top of the box)
 # Cylinder: 0.3849  => turn the mesh from bounding box to convex hull
@@ -182,7 +169,6 @@ class ToyBlocksCollectionEnvCfg(SingleArmFrankaTaskEnvCfg):
         self.scene.robot.init_state.pos = (3.3, 0.35, 0.28)
         self.scene.robot.init_state.rot = (0.707, 0.0, 0.0, 0.707)
 
-        # TODO(front cam): placeholder pose — user will supply real settings later.
         self.scene.front.offset.pos = (3.3, 2.55, 1.1)
         self.scene.front.offset.rot = (0.0, 0.0, -0.58292, -0.81253)
         self.scene.front.offset.convention = "opengl"
