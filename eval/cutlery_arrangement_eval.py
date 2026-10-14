@@ -146,6 +146,7 @@ class CutleryArrangementEnvCfg(SingleArmFrankaTaskEnvCfg):
 
     def __post_init__(self) -> None:
         super().__post_init__()
+        self.episode_length_s = 40  # graded episode length for this task
 
         self.viewer.eye = (0.8, 0.87, 0.67)
         self.viewer.lookat = (0.4, -1.3, -0.2)

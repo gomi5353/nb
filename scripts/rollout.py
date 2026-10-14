@@ -69,8 +69,21 @@ import argparse
 
 from isaaclab.app import AppLauncher
 
+POLICY_TYPES = [
+    "lerobot-diffusion",
+    "lerobot-act",
+    "lerobot-smolvla",
+    "lerobot-pi0",
+    "lerobot-pi05",
+    "lerobot-vqbet",
+    "lerobot-tdmpc",
+    "lerobot-sac",
+    "lerobot-groot",
+    "lerobot-xvla",
+]
+
 parser = argparse.ArgumentParser(
-    description="Synchronous LeRobot inference for LeIsaac simulation."
+    description="Evaluate a local LeRobot checkpoint in the Isaac Lab simulation."
 )
 parser.add_argument(
     "--task",
@@ -88,7 +101,10 @@ parser.add_argument(
     help="Seed of the environment. Drives object-pose and lighting randomization; keep fixed to replicate results.",
 )
 parser.add_argument(
-    "--episode_length_s", type=float, default=60.0, help="Episode length in seconds."
+    "--episode_length_s",
+    type=float,
+    default=None,
+    help="Episode timeout in seconds. Defaults to the task's episode_length_s (the graded value for eval files).",
 )
 parser.add_argument(
     "--eval_rounds",
@@ -102,14 +118,18 @@ parser.add_argument(
 parser.add_argument(
     "--policy_type",
     type=str,
-    default="lerobot-smolvla",
-    help="Local LeRobot policy type. Use lerobot-, for example lerobot-smolvla.",
+    required=True,
+    choices=POLICY_TYPES,
+    help="Local LeRobot policy type: lerobot-<type>, where <type> is the --policy.type used in training.",
 )
 parser.add_argument(
     "--policy_action_horizon",
     type=int,
-    default=16,
-    help="Number of actions to execute per policy call.",
+    default=None,
+    help=(
+        "Number of actions executed per policy inference. Overrides n_action_steps of the checkpoint;"
+        " defaults to the checkpoint value."
+    ),
 )
 parser.add_argument(
     "--policy_language_instruction",
@@ -144,7 +164,9 @@ args_cli = parser.parse_args()
 app_launcher = AppLauncher(vars(args_cli))
 simulation_app = app_launcher.app
 
+import os
 import time
+import traceback
 from typing import Any
 
 import omni.ui as ui
@@ -164,14 +186,6 @@ from lerobot.policies.factory import get_policy_class, make_pre_post_processors
 from lerobot.policies.utils import populate_queues
 from lerobot.utils.constants import ACTION, OBS_IMAGES
 
-from leisaac.utils.env_utils import (
-    dynamic_reset_gripper_effort_limit_sim,
-    get_task_type,
-)
-from leisaac.utils.robot_utils import (
-    convert_leisaac_action_to_lerobot,
-    convert_lerobot_action_to_leisaac,
-)
 
 import leisaac  # noqa: F401
 import simulator.tasks  # noqa: F401
@@ -301,32 +315,15 @@ class LeRobotSyncPolicy:
         self,
         policy_type: str,
         pretrained_name_or_path: str,
-        task_type: str,
         camera_infos: dict[str, tuple[int, int]],
-        actions_per_chunk: int,
+        actions_per_chunk: int | None,
         device: str,
         debug_policy_shapes: bool = False,
     ):
-        if actions_per_chunk <= 0:
-            raise ValueError(
-                f"policy_action_horizon must be positive, got {actions_per_chunk}."
-            )
-
-        self.task_type = task_type
-        self.actions_per_chunk = actions_per_chunk
         self.device = device
         self.debug_policy_shapes = debug_policy_shapes
-
-        if task_type == "so101leader":
-            self.state_joint_names = SINGLE_ARM_JOINT_NAMES
-            self.action_dim = len(SINGLE_ARM_JOINT_NAMES)
-        elif task_type == "franka_panda":
-            self.state_joint_names = FRANKA_JOINT_NAMES
-            self.action_dim = 8
-        else:
-            raise ValueError(
-                f"Task type {task_type} not supported for synchronous LeRobot inference yet."
-            )
+        self.state_joint_names = FRANKA_JOINT_NAMES
+        self.action_dim = 8
 
         self.lerobot_features = self._build_lerobot_features(camera_infos)
         self.camera_keys = list(camera_infos.keys())
@@ -343,6 +340,9 @@ class LeRobotSyncPolicy:
         self.policy = policy_class.from_pretrained(pretrained_name_or_path, local_files_only=True)
         self.policy.to(device)
         self.policy.eval()
+        if actions_per_chunk is not None:
+            self._override_n_action_steps(actions_per_chunk)
+        print(f"[SyncPolicy] {self._config_horizon_summary()}", flush=True)
 
         device_override = {"device": device}
         self.preprocessor, self.postprocessor = make_pre_post_processors(
@@ -355,6 +355,35 @@ class LeRobotSyncPolicy:
             postprocessor_overrides={"device_processor": device_override},
         )
         print("Local LeRobot policy is ready.", flush=True)
+
+    def _override_n_action_steps(self, n_action_steps: int) -> None:
+        """Replace n_action_steps of the loaded checkpoint, within the limits the policy supports."""
+        config = self.policy.config
+        if not hasattr(config, "n_action_steps"):
+            raise ValueError(
+                f"--policy_action_horizon is not supported by '{config.type}': its config has no n_action_steps."
+            )
+        if n_action_steps <= 0:
+            raise ValueError(f"--policy_action_horizon must be positive, got {n_action_steps}.")
+        if getattr(config, "temporal_ensemble_coeff", None) is not None and n_action_steps != 1:
+            raise ValueError("--policy_action_horizon must be 1 for ACT with temporal ensembling.")
+        if hasattr(config, "horizon") and hasattr(config, "n_obs_steps"):
+            # Diffusion Policy keeps actions[n_obs_steps - 1 : n_obs_steps - 1 + n_action_steps] of the horizon.
+            max_steps = config.horizon - config.n_obs_steps + 1
+        else:
+            max_steps = getattr(config, "chunk_size", None)
+        if max_steps is not None and n_action_steps > max_steps:
+            raise ValueError(
+                f"--policy_action_horizon={n_action_steps} exceeds the {max_steps} actions that one inference of"
+                f" this checkpoint predicts."
+            )
+        print(
+            f"[SyncPolicy] n_action_steps: checkpoint {config.n_action_steps} -> override {n_action_steps}",
+            flush=True,
+        )
+        config.n_action_steps = n_action_steps
+        # The action queues are sized from n_action_steps, so rebuild them.
+        self.reset()
 
     def reset(self):
         policy_reset = getattr(self.policy, "reset", None)
@@ -388,14 +417,7 @@ class LeRobotSyncPolicy:
         }
         raw_observation["task"] = observation_dict["task_description"]
 
-        if self.task_type == "so101leader":
-            joint_pos = convert_leisaac_action_to_lerobot(observation_dict["joint_pos"])
-        elif self.task_type == "franka_panda":
-            joint_pos = observation_dict["joint_pos"].cpu().numpy()
-        else:
-            raise ValueError(
-                f"Task type {self.task_type} not supported for synchronous LeRobot inference yet."
-            )
+        joint_pos = observation_dict["joint_pos"].cpu().numpy()
 
         for joint_index, joint_name in enumerate(self.state_joint_names):
             raw_observation[f"{joint_name}.pos"] = joint_pos[env_index, joint_index].item()
@@ -452,19 +474,9 @@ class LeRobotSyncPolicy:
         return self.postprocessor(action)
 
     def _convert_actions_to_leisaac(self, action_tensor: torch.Tensor) -> np.ndarray:
-        if self.task_type == "so101leader":
-            actions = convert_lerobot_action_to_leisaac(action_tensor)
-        elif self.task_type == "franka_panda":
-            actions = action_tensor.to("cpu").numpy()
-        else:
-            raise ValueError(
-                f"Task type {self.task_type} not supported for synchronous LeRobot inference yet."
-            )
-
+        actions = action_tensor.to("cpu").numpy()
         if actions.shape[-1] != self.action_dim:
-            raise ValueError(
-                f"Expected {self.action_dim} action values for task type {self.task_type}, got {actions.shape[-1]}."
-            )
+            raise ValueError(f"Expected {self.action_dim} action values, got {actions.shape[-1]}.")
         return actions
 
     def get_action(self, observation_dict: dict) -> torch.Tensor:
@@ -491,8 +503,8 @@ def preprocess_obs_dict(obs_dict: dict, language_instruction: str):
 def get_policy_type(policy_type_arg: str) -> str:
     if not policy_type_arg.startswith("lerobot-"):
         raise ValueError(
-            f"policy_inference_sync.py only supports local LeRobot policies, got '{policy_type_arg}'. "
-            "Use --policy_type=lerobot-."
+            f"rollout.py only supports local LeRobot policies, got '{policy_type_arg}'. "
+            "Use --policy_type=lerobot-<type>."
         )
     return policy_type_arg.split("lerobot-", 1)[1]
 
@@ -511,14 +523,16 @@ def main():
     task_id = resolve_task(args_cli.task)
     args_cli.task = task_id
     env_cfg = parse_env_cfg(task_id, device=args_cli.device, num_envs=args_cli.num_envs)
-    task_type = get_task_type(task_id)
     robot_name = getattr(env_cfg, "robot_name", None)
-    policy_task_type = "franka_panda" if robot_name == "franka_panda" else task_type
-    teleop_device = "keyboard" if policy_task_type == "franka_panda" else task_type
-    env_cfg.use_teleop_device(teleop_device)
+    if robot_name != "franka_panda":
+        raise ValueError(f"rollout.py supports Franka Panda tasks only, got robot_name={robot_name!r}.")
+    # Same action space and robot settings as data collection.
+    env_cfg.use_joint_position_actions()
     env_cfg.seed = args_cli.seed
     print(f"[rollout] seed = {env_cfg.seed}", flush=True)
-    env_cfg.episode_length_s = args_cli.episode_length_s
+    if args_cli.episode_length_s is not None:
+        env_cfg.episode_length_s = args_cli.episode_length_s
+    print(f"[rollout] episode_length_s = {env_cfg.episode_length_s}", flush=True)
 
     if args_cli.eval_rounds <= 0:
         if hasattr(env_cfg.terminations, "time_out"):
@@ -563,7 +577,6 @@ def main():
     policy = LeRobotSyncPolicy(
         policy_type=get_policy_type(args_cli.policy_type),
         pretrained_name_or_path=args_cli.policy_checkpoint_path,
-        task_type=policy_task_type,
         camera_infos=camera_infos,
         actions_per_chunk=args_cli.policy_action_horizon,
         device=args_cli.device,
@@ -585,6 +598,8 @@ def main():
     # and ignore any further activity until the round ends.
     num_envs = env.num_envs
     success_count, episodes_done = 0, 0
+    # The first round starts from the reset above, which already produced obs_dict.
+    needs_reset = False
     while simulation_app.is_running():
         if max_episode_count > 0 and episodes_done >= max_episode_count:
             break
@@ -599,8 +614,10 @@ def main():
             f"across {num_envs} parallel env(s)..."
         )
 
-        with torch.inference_mode():
-            obs_dict, _ = env.reset()
+        if needs_reset:
+            with torch.inference_mode():
+                obs_dict, _ = env.reset()
+        needs_reset = True
         policy.reset()
         controller.reset()
         done_mask = torch.zeros(num_envs, dtype=torch.bool, device=env.device)
@@ -616,8 +633,6 @@ def main():
                     obs_dict["policy"], language_instruction
                 )
                 actions = policy.get_action(policy_obs_dict).to(env.device)
-                if env.cfg.dynamic_reset_gripper_effort_limit:
-                    dynamic_reset_gripper_effort_limit_sim(env, teleop_device)
                 obs_dict, _, reset_terminated, reset_time_outs, _ = env.step(actions)
 
                 newly_done = (reset_terminated | reset_time_outs) & ~done_mask
@@ -649,4 +664,9 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:
+        traceback.print_exc()
+        # Isaac Sim can hang on shutdown after an error; exit hard so the shell sees the failure.
+        os._exit(1)

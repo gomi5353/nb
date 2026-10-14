@@ -18,6 +18,7 @@ from isaaclab.utils.datasets.episode_data import EpisodeData
 
 from leisaac.devices.action_process import preprocess_device_action as preprocess_device_action_common
 from leisaac.enhance.datasets.lerobot_dataset_handler import LeRobotDatasetCfg
+from leisaac.utils.env_utils import dynamic_reset_gripper_effort_limit_sim
 
 from simulator.assets.robots.franka import FRANKA_PANDA_CFG
 from simulator import FRANKA_JOINT_NAMES
@@ -119,6 +120,11 @@ class SingleArmFrankaTaskSceneCfg(InteractiveSceneCfg):
     )
 
 
+def update_gripper_effort_limit(env, env_ids) -> None:
+    """Interval event: adapt the gripper effort limit to the object nearest to the gripper."""
+    dynamic_reset_gripper_effort_limit_sim(env, "keyboard")
+
+
 @configclass
 class SingleArmFrankaEventCfg:
     reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
@@ -188,11 +194,20 @@ class SingleArmFrankaTaskEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.render.enable_translucency = True
         self.default_feature_joint_names = [f"{joint_name}.pos" for joint_name in FRANKA_JOINT_NAMES]
 
-    def use_teleop_device(self, teleop_device) -> None:
-        self.task_type = teleop_device
-        if teleop_device not in ["keyboard", "gamepad"]:
-            raise ValueError(f"Franka teleoperation only supports keyboard/gamepad, got '{teleop_device}'.")
+    def use_joint_position_actions(self) -> None:
+        """Set the action space and robot settings shared by data collection and rollout.
 
+        Call this on every environment config before ``gym.make``, in recording scripts as well as in
+        ``scripts/rollout.py``, so that collected data and evaluation run under identical control settings:
+
+        - ``arm_action``: absolute joint-position targets for the 7 arm joints;
+        - ``gripper_action``: binary gripper command (>0 open, <0 close);
+        - gravity disabled on the robot links;
+        - per-step gripper effort limit update (when ``dynamic_reset_gripper_effort_limit`` is set).
+
+        The joint gains are the ``FRANKA_PANDA_CFG`` defaults (stiffness 80, damping 4).
+        """
+        self.task_type = "keyboard"
         self.actions.arm_action = mdp.JointPositionActionCfg(
             asset_name="robot",
             joint_names=["panda_joint.*"],
@@ -206,14 +221,18 @@ class SingleArmFrankaTaskEnvCfg(ManagerBasedRLEnvCfg):
             close_command_expr={"panda_finger_joint.*": 0.0},
         )
         self.scene.robot.spawn.rigid_props.disable_gravity = True
-        # Task-space teleop feeds joint position setpoints from differential IK.
-        # The default FRANKA_PANDA_CFG gains (stiffness 80 / damping 4) are the
-        # joint-space RL preset and are far too underdamped to track them, which
-        # shows up as the arm ringing around every command. Use the stiffer gains
-        # IsaacLab ships for IK control (FRANKA_PANDA_HIGH_PD_CFG).
-        # for actuator_name in ("panda_shoulder", "panda_forearm"):
-        #     self.scene.robot.actuators[actuator_name].stiffness = 400.0
-        #     self.scene.robot.actuators[actuator_name].damping = 80.0
+        if self.dynamic_reset_gripper_effort_limit:
+            # Runs inside env.step(), so every script gets the same gripper behavior without calling it by hand.
+            self.events.gripper_effort_limit = EventTerm(
+                func=update_gripper_effort_limit, mode="interval", interval_range_s=(0.0, 0.0)
+            )
+
+    def use_teleop_device(self, teleop_device) -> None:
+        """Deprecated alias of :meth:`use_joint_position_actions`, kept for the teleoperation scripts."""
+        if teleop_device not in ["keyboard", "gamepad"]:
+            raise ValueError(f"Franka teleoperation only supports keyboard/gamepad, got '{teleop_device}'.")
+        self.use_joint_position_actions()
+        self.task_type = teleop_device
 
     def preprocess_device_action(self, action: dict[str, Any], teleop_device) -> torch.Tensor:
         if action.get("keyboard") is not None or action.get("gamepad") is not None:

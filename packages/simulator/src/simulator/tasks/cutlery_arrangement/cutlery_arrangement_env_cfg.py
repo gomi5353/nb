@@ -34,7 +34,7 @@ DININGTABLE_WORLD_POS: tuple[float, float, float] = (7.0, 3.5, 0.354)
 DININGTABLE_WORLD_ROT: tuple[float, float, float, float] = ( 0.70711, 0.0, 0.0, -0.70711)
 
 # Fixed plate world position. The plate sits in front of the robot with
-# sufficient free space on both y sides for the two drop targets.
+# sufficient free space on both x sides for the two drop targets.
 PLATE_WORLD_POS: tuple[float, float, float] = (7.0, 2.9, 0.74416) # (0.50, -0.40, 0.05)
 
 
@@ -95,7 +95,8 @@ def cutlery_arranged(
     knife_cfg: SceneEntityCfg,
     max_dist_xy: float,
 ) -> torch.Tensor:
-    """Termination: fork on +y side of plate, knife on -y side, both within max_dist_xy."""
+    """Termination: fork at smaller x than the plate (robot's left), knife at larger x (robot's right),
+    both within max_dist_xy of the plate in the xy plane."""
     plate: RigidObject = env.scene[plate_cfg.name]
     fork: RigidObject = env.scene[fork_cfg.name]
     knife: RigidObject = env.scene[knife_cfg.name]
@@ -112,6 +113,7 @@ def cutlery_arranged(
     done = torch.logical_and(done, fork_dist_xy <= max_dist_xy)
     done = torch.logical_and(done, knife_dist_xy <= max_dist_xy)
 
+    # The robot faces +y, so its left is -x. In the front camera image this is the right side.
     fork_on_left = fork_pos[:, 0] < plate_pos[:, 0]
     knife_on_right = knife_pos[:, 0] > plate_pos[:, 0]
 
@@ -148,6 +150,7 @@ class CutleryArrangementEnvCfg(SingleArmFrankaTaskEnvCfg):
 
     def __post_init__(self) -> None:
         super().__post_init__()
+        self.episode_length_s = 40  # graded episode length for this task
 
         self.viewer.eye = (0.8, 0.87, 0.67)
         self.viewer.lookat = (0.4, -1.3, -0.2)
