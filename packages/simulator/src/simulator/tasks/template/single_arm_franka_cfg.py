@@ -1,5 +1,4 @@
 from dataclasses import MISSING
-from typing import Any
 
 import isaaclab.sim as sim_utils
 import torch
@@ -16,7 +15,6 @@ from isaaclab.sensors import FrameTransformerCfg, OffsetCfg, TiledCameraCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.datasets.episode_data import EpisodeData
 
-from leisaac.devices.action_process import preprocess_device_action as preprocess_device_action_common
 from leisaac.enhance.datasets.lerobot_dataset_handler import LeRobotDatasetCfg
 from leisaac.utils.env_utils import dynamic_reset_gripper_effort_limit_sim
 
@@ -179,7 +177,6 @@ class SingleArmFrankaTaskEnvCfg(ManagerBasedRLEnvCfg):
     robot_name: str = "franka_panda"
     default_feature_joint_names: list[str] = MISSING
     task_description: str = MISSING
-    teleop_target_frame: str = "panda_hand"
     tracked_object_names: list[str] = []
     """Rigid objects recorded as ``object_pose.<name>`` dataset columns for data verification."""
 
@@ -207,7 +204,6 @@ class SingleArmFrankaTaskEnvCfg(ManagerBasedRLEnvCfg):
 
         The joint gains are the ``FRANKA_PANDA_CFG`` defaults (stiffness 80, damping 4).
         """
-        self.task_type = "keyboard"
         self.actions.arm_action = mdp.JointPositionActionCfg(
             asset_name="robot",
             joint_names=["panda_joint.*"],
@@ -226,20 +222,6 @@ class SingleArmFrankaTaskEnvCfg(ManagerBasedRLEnvCfg):
             self.events.gripper_effort_limit = EventTerm(
                 func=update_gripper_effort_limit, mode="interval", interval_range_s=(0.0, 0.0)
             )
-
-    def use_teleop_device(self, teleop_device) -> None:
-        """Deprecated alias of :meth:`use_joint_position_actions`, kept for the teleoperation scripts."""
-        if teleop_device not in ["keyboard", "gamepad"]:
-            raise ValueError(f"Franka teleoperation only supports keyboard/gamepad, got '{teleop_device}'.")
-        self.use_joint_position_actions()
-        self.task_type = teleop_device
-
-    def preprocess_device_action(self, action: dict[str, Any], teleop_device) -> torch.Tensor:
-        if action.get("keyboard") is not None or action.get("gamepad") is not None:
-            processed_action = torch.zeros(teleop_device.env.num_envs, 8, device=teleop_device.env.device)
-            processed_action[:, :] = action["joint_state"]
-            return processed_action
-        return preprocess_device_action_common(action, teleop_device)
 
     def build_lerobot_frame(self, episode_data: EpisodeData, dataset_cfg: LeRobotDatasetCfg) -> dict:
         obs_data = episode_data._data["obs"]
