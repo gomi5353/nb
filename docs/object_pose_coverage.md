@@ -76,6 +76,7 @@ Things to know about this recorder (they come from leisaac, not from the coverag
 
 - It only accepts `DatasetExportMode.EXPORT_SUCCEEDED_ONLY` and **discards episodes whose `success` term was false**. If you also want failed episodes in your dataset, write frames yourself (option B).
 - It drops the first 5 steps of every episode, so frame 0 is about step 6. Objects spawned slightly above the table may have dropped onto it by then; in our test they shifted by a few millimetres sideways. That is fine for coverage.
+- The `object_pose.<name>` columns come from the scene state *after* the frame's `env.step()`, while `observation.state` and the images are from *before* it. So the object pose in frame t is one simulation step (1/60 s) later than the observation. Objects at rest don't move in that time, so the first frame's pose is still the episode's start pose.
 
 ### 2.3 Option B: your own frame writer
 
@@ -86,7 +87,7 @@ from simulator.utils.object_pose_recording import object_pose_features, read_obj
 names = env.cfg.tracked_object_names
 dataset = LeRobotDataset.create(
     repo_id=...,
-    fps=...,
+    fps=60,  # one frame per env.step(); see how_to_record.md section 6
     robot_type="franka_panda",
     features={**your_features, **object_pose_features(names)},
 )

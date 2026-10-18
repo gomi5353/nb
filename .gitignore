@@ -17,6 +17,7 @@ data/*
 !data/.gitkeep
 checkpoints/*
 !checkpoints/.gitkeep
+outputs/
 
 # Workspace member outputs
 packages/simulator/**/output/

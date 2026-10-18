@@ -26,7 +26,7 @@ Before you start, make sure you have:
 
 1. **Nvidia GPU with CUDA** — training requires a GPU. Run `nvidia-smi` in your terminal to verify your GPU is detected. If you see an error, CUDA is not installed correctly.
 2. **`uv` workspace synced** — run `uv sync` at the repo root. This installs all Python dependencies.
-3. **Dataset on Hugging Face Hub** — your recorded demonstration data must be uploaded first. See [LeRobot & Hugging Face Hub workflow](../README.md#lerobot--hugging-face-hub-workflow).
+3. **Your dataset** — either the local folder written by your recording script (`datasets/${HF_USER}/<repo_id>` on the host), or the same dataset uploaded to the Hugging Face Hub. See [How to Record Episodes](how_to_record.md).
 4. **`HF_USER` environment variable set** — run `export HF_USER=<your-huggingface-username>` so the commands below work as-is.
 5. **(Optional) Weights & Biases** — for tracking training progress with graphs. Run `wandb login` before training if you want this.
 
@@ -40,6 +40,7 @@ Copy and paste the command below into your terminal to start training. Make sure
 ```bash
 lerobot-train \
   --dataset.repo_id=${HF_USER}/<repo_id> \
+  --dataset.root=datasets/${HF_USER}/<repo_id> \
   --policy.type=diffusion \
   --output_dir=<your-output-dir> \
   --job_name=cupstacking \
@@ -54,13 +55,16 @@ Training takes anywhere from a few hours to over a day depending on dataset size
 
 | Flag | Description |
 |------|-------------|
-| `--dataset.repo_id=${HF_USER}/<repo_id>` | Which dataset to train on. Use the same `<repo_id>` you uploaded via `hf upload` in the [data generation step](../README.md#run-the-data-generation-pipeline). The trainer downloads it from Hugging Face Hub automatically. |
+| `--dataset.repo_id=${HF_USER}/<repo_id>` | Which dataset to train on: the repo id you recorded with. |
+| `--dataset.root=datasets/${HF_USER}/<repo_id>` | Local folder of the dataset. Leave this flag out to download the dataset from the Hugging Face Hub instead (upload it first with `hf upload ${HF_USER}/<repo_id> datasets/${HF_USER}/<repo_id> --repo-type dataset`). |
 | `--policy.type=diffusion` | **Policy architecture (default: `diffusion`).** Diffusion policy generates smooth action sequences and is recommended for manipulation tasks. It auto-adapts to your dataset's robot arm configuration and cameras. Other options include `act` (Action Chunking with Transformers). |
 | `--policy.device=cuda` | Train on GPU (`cuda`) for full speed. Only set to `cpu` for quick debugging — real training on CPU would take unreasonably long. |
 | `--wandb.enable=true` | Turn on Weights & Biases logging so you can watch training progress (loss curves, etc.) from a web browser. Requires `wandb login` beforehand. Set to `false` if you don't need it. |
 | `--output_dir=<your-output-dir>` | Folder on your computer where training results (checkpoints, logs, config) are saved. You must specify your own path (e.g., `outputs/train/diffusion_cupstacking_v1`). |
 | `--job_name` | A name for this training run — shows up in logs and W&B dashboard. Use something descriptive like `cupstacking_v1`. |
-| `--policy.repo_id=${HF_USER}/my_policy` | Where to upload the trained policy on Hugging Face Hub once training is done. This is what the robot will download later to run the task. |
+| `--policy.repo_id=${HF_USER}/my_policy` | Where the trained policy is uploaded on the Hugging Face Hub when training finishes (LeRobot pushes it automatically). Add `--policy.push_to_hub=false` to skip the upload; then this flag is not needed. |
+| `--batch_size` | Training batch size (default `8`). |
+| `--steps` | Number of training steps (default `100000`). A checkpoint is saved every `--save_freq` steps (default `20000`) and at the end. |
 
 ## Multi-GPU Training (Advanced)
 
@@ -76,10 +80,10 @@ Most users with a single GPU can skip this section.
 
 Once training finishes (you'll see a completion message in the terminal):
 
-1. **Verify checkpoint** — open your `--output_dir` folder and check that it contains a `pretrained_model/` subfolder and a `train_config.json` file. These are your trained policy files.
-2. **Upload to Hub** — push the trained policy to Hugging Face so the robot can download it:
+1. **Find the checkpoint** — the latest checkpoint is in `<your-output-dir>/checkpoints/last/pretrained_model/` (`last` points to the newest numbered step folder). It contains `config.json`, `model.safetensors`, and `train_config.json`; see [LeRobot Checkpoint Format](lerobot-model-format.md). Pass this folder to `--policy_checkpoint_path` in [rollout](lerobot_rollout.md).
+2. **Upload to Hub** (only needed if you turned off the automatic push, or want an extra tagged version):
    ```bash
-   hf upload ${HF_USER}/my_policy <your-output-dir>/pretrained_model --revision <tag>
+   hf upload ${HF_USER}/my_policy <your-output-dir>/checkpoints/last/pretrained_model --revision <tag>
    ```
    Replace `<your-output-dir>` with the `--output_dir` path you used during training, and `<tag>` with a version label (e.g., `v1`).
 
@@ -89,5 +93,5 @@ Once training finishes (you'll see a completion message in the terminal):
 |---------|----------|
 | `nvidia-smi` not found or shows error | CUDA is not installed. Follow Nvidia's CUDA installation guide for your OS. |
 | `lerobot-train: command not found` | Run `uv sync` at repo root, then try again. |
-| Out of memory (OOM) error | Reduce batch size by adding `--training.batch_size=16` (or lower). |
+| Out of memory (OOM) error | Reduce the batch size, e.g. `--batch_size=4`. |
 | Training loss not decreasing | Check your dataset quality — ensure demonstrations are consistent and complete. |

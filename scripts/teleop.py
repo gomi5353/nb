@@ -70,7 +70,7 @@ parser.add_argument("--recalibrate", action="store_true", help="recalibrate SO10
 parser.add_argument("--quality", action="store_true", help="whether to enable quality render mode.")
 parser.add_argument("--use_lerobot_recorder", action="store_true", help="whether to use lerobot recorder.")
 parser.add_argument("--lerobot_dataset_repo_id", type=str, default=None, help="Lerobot Dataset repository ID.")
-parser.add_argument("--lerobot_dataset_fps", type=int, default=30, help="Lerobot Dataset frames per second.")
+parser.add_argument("--lerobot_dataset_fps", type=int, default=60, help="Lerobot Dataset frames per second (one frame per env.step at 60 Hz).")
 
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)

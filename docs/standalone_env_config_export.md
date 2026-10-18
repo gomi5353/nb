@@ -37,9 +37,9 @@ If the config can't be re-imported from a file path, the resulting demos and pol
 
 ### 1.3 Rollout / training pickup
 
-Both datagen and downstream training/rollout discover envs through `gym.register(... env_cfg_entry_point=...)`. The entry point is a **`module:Class` string**. That string only resolves if the module exists as an importable file on `sys.path`.
+Both your recording script and rollout discover envs through `gym.register(... env_cfg_entry_point=...)`. The entry point is a **`module:Class` string**. That string only resolves if the module exists as an importable file on `sys.path`.
 
-In other words: if your config isn't a standalone file with a `gym.register` block pointing at it, `parse_env_cfg(args_cli.task, ...)` in `scripts/datagen/generate.py` (and any rollout/training script that follows the same contract) cannot construct your env. Standalone export is what makes `--task LeIsaac-HCIS-<MyTask>-...-v0` work end-to-end.
+In other words: if your config isn't a standalone file with a `gym.register` block pointing at it, `parse_env_cfg(args.task, ...)` in your recording script (and `scripts/rollout.py`, which follows the same contract) cannot construct your env. Standalone export is what makes `--task HCIS-<MyTask>-...-v0` work end-to-end.
 
 ---
 
@@ -74,7 +74,7 @@ Rules:
 | Config module | `<task_slug>_env_cfg.py` | `cup_stacking_env_cfg.py` |
 | Config class | `<TaskName>EnvCfg` (PascalCase) | `CupStackingEnvCfg` |
 | Scene class | `<TaskName>SceneCfg` | `CupStackingSceneCfg` |
-| Gym id | `LeIsaac-HCIS-<TaskName>-<RobotKind>-v<N>` | `LeIsaac-HCIS-CupStacking-SingleArm-v0` |
+| Gym id | `HCIS-<TaskName>-<RobotKind>-v<N>` | `HCIS-CupStacking-SingleArm-v0` |
 
 Bump `vN` whenever you make a backwards-incompatible change to the config so that previously recorded demos stay associated with the env they were collected against.
 
@@ -82,12 +82,12 @@ Bump `vN` whenever you make a backwards-incompatible change to the config so tha
 
 The exported `<my_task>_env_cfg.py` must:
 
-1. Subclass `SingleArmFrankaTaskEnvCfg` (or another in-tree base) — never a bare `ManagerBasedRLEnvCfg`. The template wires sensors, observations, teleop, and the LeRobot frame builder you almost certainly want.
+1. Subclass `SingleArmFrankaTaskEnvCfg` (or another in-tree base) — never a bare `ManagerBasedRLEnvCfg`. The template wires sensors, observations, the action setup (`use_joint_position_actions()`), and the LeRobot frame builder you almost certainly want.
 2. Use `@configclass` dataclasses for every nested config (scene, observations, terminations, …). Plain Python classes will not be picked up by Isaac Lab's manager system.
 3. Set `task_description: str` to a short natural-language string. It is baked into every LeRobot frame's `"task"` field and used as conditioning for VLA policies.
 4. Expose all task-specific tweaks as **fields** of the config class, not as mutations applied after construction. Field defaults are part of the file; post-hoc mutations are not.
-5. Implement `__post_init__(self)` for anything that must run after the parent populates defaults — viewer pose, robot home pose, `parse_usd_and_create_subassets`, the optional `object_poses_path` block. Always call `super().__post_init__()` first.
-6. Use `MISSING` for any field that is intentionally filled in at runtime (e.g. teleop-device-dependent action terms). Do **not** leave fields as `None` to mean "fill in later".
+5. Implement `__post_init__(self)` for anything that must run after the parent populates defaults — viewer pose, robot home pose, `parse_usd_and_create_subassets`, randomization events. Always call `super().__post_init__()` first.
+6. Use `MISSING` for any field that is intentionally filled in at runtime (e.g. the action terms, which `use_joint_position_actions()` fills in). Do **not** leave fields as `None` to mean "fill in later".
 
 Skeleton:
 
@@ -115,7 +115,7 @@ class MyTaskEnvCfg(SingleArmFrankaTaskEnvCfg):
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        # viewer, robot init_state, parse_usd_and_create_subassets, object_poses block
+        # viewer, robot init_state, parse_usd_and_create_subassets, randomization events
         ...
 ```
 
@@ -127,7 +127,7 @@ import gymnasium as gym
 
 
 gym.register(
-    id="LeIsaac-HCIS-<MyTask>-SingleArm-v0",
+    id="HCIS-<MyTask>-SingleArm-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
     kwargs={
@@ -140,15 +140,19 @@ gym.register(
 
 ### 2.4 Verifying the export
 
-After exporting, sanity-check that the file is what gets loaded:
+After exporting, sanity-check that the file is what gets loaded. Run this inside the container
+(Isaac Lab modules can only be imported after the simulator app has started):
 
 ```bash
 python -c "
+from isaaclab.app import AppLauncher
+app = AppLauncher(headless=True).app
 import simulator.tasks  # registers the env
 from isaaclab_tasks.utils import parse_env_cfg
-cfg = parse_env_cfg('LeIsaac-HCIS-<MyTask>-SingleArm-v0', num_envs=1)
+cfg = parse_env_cfg('HCIS-<MyTask>-SingleArm-v0', num_envs=1)
 print(type(cfg).__module__, type(cfg).__qualname__)
 print(cfg.task_description)
+app.close()
 "
 ```
 
@@ -183,7 +187,7 @@ the env config must stay **out of the public `aicapstone` tree**.
 
 | Form | Example |
 |---|---|
-| Registered gym id | `--task LeIsaac-HCIS-CupStacking-SingleArm-v0` |
+| Registered gym id | `--task HCIS-CupStacking-SingleArm-v0` |
 | Path to `.py` file | `--task /tmp/private_smoke/private_cup_stacking_smoke.py` |
 | `module:Class` ref | `--task my_pkg.tasks.eval:MyEvalCfg` |
 
@@ -238,17 +242,15 @@ PY
 python scripts/rollout.py \
     --task /tmp/private_smoke/private_cup_stacking_smoke.py \
     --policy_type=lerobot-diffusion \
-    --policy_checkpoint_path=tiny-diff \
-    --policy_action_horizon=1 \
+    --policy_checkpoint_path=<checkpoint_path> \
     --device=cuda \
     --enable_cameras
 
 # Regression — same script with the in-tree gym id
 python scripts/rollout.py \
-    --task LeIsaac-HCIS-CupStacking-SingleArm-v0 \
+    --task HCIS-CupStacking-SingleArm-v0 \
     --policy_type=lerobot-diffusion \
-    --policy_checkpoint_path=tiny-diff \
-    --policy_action_horizon=1 \
+    --policy_checkpoint_path=<checkpoint_path> \
     --device=cuda \
     --enable_cameras
 ```
