@@ -9,11 +9,11 @@ from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.sim.schemas import MassPropertiesCfg
 from isaaclab.utils import configclass
 
-from leisaac.utils.domain_randomization import domain_randomization, randomize_object_uniform
+from leisaac.utils.domain_randomization import domain_randomization
 from leisaac.utils.general_assets import parse_usd_and_create_subassets
 from simulator import ASSETS_ROOT
 from simulator.assets.scenes.living_room import LIVING_ROOM_CFG, LIVING_ROOM_USD_PATH
-from simulator.utils.domain_randomization import randomize_light_conditions
+from simulator.utils.domain_randomization import randomize_light_conditions, randomize_objects_apart
 
 from simulator.tasks.template.single_arm_franka_cfg import (
     SingleArmFrankaObservationsCfg,
@@ -29,19 +29,6 @@ LIVING_OBJECTS_ROOT = ASSETS_ROOT / "scenes" / "living_room" / "objects"
 TABLE_USD = str(ASSETS_ROOT / "scenes" / "table_0000" / "table_0000.usd")
 TABLE_WORLD_POS: tuple[float, float, float] = (3.3, 1.1, 0.183)
 
-TAG_TO_OBJECT: dict[int, str] = {1: "green_block", 2: "blue_block", 3: "red_block"}
-ANCHOR_TAG_ID: int = 0
-ANCHOR_WORLD_POSE: tuple[float, float, float] = (0.35, 0.0, 0.0)
-OBJECT_ROLL: float = 0.0
-OBJECT_PITCH: float = 0.0
-# Per-USD yaw correction (rad) so the spawned object matches its visual heading
-# under the gripper's coordinate convention. Tag-to-mesh alignment differs per
-# asset; tune until ``data.root_quat_w`` matches what you see in the viewport.
-PER_OBJECT_YAW_OFFSET: dict[str, float] = {
-    "green_block": math.pi / 2.0,
-    "blue_block": math.pi / 2.0,
-    "red_block": math.pi / 2.0,
-}
 
 # Storage box: 0.36348 (SDF mesh, can't convex hull, object will float on top of the box)
 # Cylinder: 0.3849  => turn the mesh from bounding box to convex hull
@@ -174,6 +161,7 @@ class ToyBlocksCollectionEnvCfg(SingleArmFrankaTaskEnvCfg):
 
     def __post_init__(self) -> None:
         super().__post_init__()
+        self.episode_length_s = 60  # graded episode length for this task
 
         self.viewer.eye = (0.8, 0.87, 0.67)
         self.viewer.lookat = (0.4, -1.3, -0.2)
@@ -182,7 +170,6 @@ class ToyBlocksCollectionEnvCfg(SingleArmFrankaTaskEnvCfg):
         self.scene.robot.init_state.pos = (3.3, 0.35, 0.28)
         self.scene.robot.init_state.rot = (0.707, 0.0, 0.0, 0.707)
 
-        # TODO(front cam): placeholder pose — user will supply real settings later.
         self.scene.front.offset.pos = (3.3, 2.55, 1.1)
         self.scene.front.offset.rot = (0.0, 0.0, -0.58292, -0.81253)
         self.scene.front.offset.convention = "opengl"
@@ -205,29 +192,26 @@ class ToyBlocksCollectionEnvCfg(SingleArmFrankaTaskEnvCfg):
         domain_randomization(
             self,
             random_options=[
-                randomize_object_uniform(
-                    "green_block",
-                    pose_range={
-                        "x": (-0.05, 0.05),
-                        "y": (-0.05, 0.05),
-                        "z": (0.0, 0.0),
+                # Resample when two blocks land closer than 8 cm (they would overlap).
+                randomize_objects_apart(
+                    pose_ranges={
+                        "green_block": {
+                            "x": (-0.05, 0.05),
+                            "y": (-0.05, 0.05),
+                            "z": (0.0, 0.0),
+                        },
+                        "blue_block": {
+                            "x": (-0.05, 0.05),
+                            "y": (-0.05, 0.05),
+                            "z": (0.0, 0.0),
+                        },
+                        "red_block": {
+                            "x": (-0.05, 0.05),
+                            "y": (-0.05, 0.05),
+                            "z": (0.0, 0.0),
+                        },
                     },
-                ),
-                randomize_object_uniform(
-                    "blue_block",
-                    pose_range={
-                        "x": (-0.05, 0.05),
-                        "y": (-0.05, 0.05),
-                        "z": (0.0, 0.0),
-                    },
-                ),
-                randomize_object_uniform(
-                    "red_block",
-                    pose_range={
-                        "x": (-0.05, 0.05),
-                        "y": (-0.05, 0.05),
-                        "z": (0.0, 0.0),
-                    },
+                    min_distance=0.08,
                 ),
                 randomize_light_conditions("light", textures=[], intensity_range=(1100, 1300)),
             ],

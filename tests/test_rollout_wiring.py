@@ -1,4 +1,4 @@
-"""Static checks for the resolve_task wiring in scripts/rollout.py (AUT-84).
+"""Static checks for the resolve_task wiring in scripts/rollout.py.
 
 Importing rollout.py directly pulls in IsaacLab and AppLauncher, which is too
 heavy for a unit test. Parse the source via ast instead and assert the wiring
@@ -98,5 +98,5 @@ def test_task_help_describes_three_forms(tree: ast.Module) -> None:
 
 
 def test_no_env_cfg_file_flag(source: str) -> None:
-    """AC: no --env_cfg_file flag introduced (the alternative AUT-32 design)."""
+    """AC: no --env_cfg_file flag introduced."""
     assert "--env_cfg_file" not in source

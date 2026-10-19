@@ -12,10 +12,10 @@ from isaaclab.sim.schemas import MassPropertiesCfg
 from isaaclab.utils import configclass
 
 from leisaac.utils.general_assets import parse_usd_and_create_subassets
-from leisaac.utils.domain_randomization import domain_randomization, randomize_object_uniform
+from leisaac.utils.domain_randomization import domain_randomization
 from simulator import ASSETS_ROOT
 from simulator.assets.scenes.kitchen import KITCHEN_CFG, KITCHEN_USD_PATH
-from simulator.utils.domain_randomization import randomize_light_conditions
+from simulator.utils.domain_randomization import randomize_light_conditions, randomize_objects_apart
 
 from simulator.tasks.template.single_arm_franka_cfg import (
     SingleArmFrankaObservationsCfg,
@@ -25,13 +25,6 @@ from simulator.tasks.template.single_arm_franka_cfg import (
 )
 
 KITCHEN_OBJECTS_ROOT = ASSETS_ROOT / "scenes" / "kitchen" / "objects"
-
-TAG_TO_OBJECT: dict[int, str] = {1: "blue_cup", 2: "pink_cup"}
-ANCHOR_TAG_ID: int = 0
-ANCHOR_WORLD_POSE: tuple[float, float, float] = (0.0, 0.0, 0.0)
-OBJECT_Z: float = 1.0
-OBJECT_ROLL: float = 0.0
-OBJECT_PITCH: float = 0.0
 
 
 configure_seed(42)
@@ -47,7 +40,7 @@ class CupStackingEvalSceneCfg(SingleArmFrankaTaskSceneCfg):
             usd_path=str(KITCHEN_OBJECTS_ROOT / "BlueCup" / "BlueCup.usd"),
             mass_props=MassPropertiesCfg(mass=0.1),
         ),
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(8.95, 6.44, 1.0), rot=(1.0, 0.0, 0.0, 0.0)),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=(8.90, 6.48, 1.0), rot=(1.0, 0.0, 0.0, 0.0)),
     )
     pink_cup: RigidObjectCfg = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Scene/pink_cup",
@@ -55,7 +48,7 @@ class CupStackingEvalSceneCfg(SingleArmFrankaTaskSceneCfg):
             usd_path=str(KITCHEN_OBJECTS_ROOT / "PinkCup" / "PinkCup.usd"),
             mass_props=MassPropertiesCfg(mass=0.1),
         ),
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(9.07, 6.53, 1.0), rot=(1.0, 0.0, 0.0, 0.0)),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=(9.10, 6.48, 1.0), rot=(1.0, 0.0, 0.0, 0.0)),
     )
 
 
@@ -104,6 +97,7 @@ class CupStackingEvalEnvCfg(SingleArmFrankaTaskEnvCfg):
 
     def __post_init__(self) -> None:
         super().__post_init__()
+        self.episode_length_s = 20  # graded episode length for this task
 
         self.viewer.eye = (0.8, 0.87, 0.67)
         self.viewer.lookat = (0.4, -1.3, -0.2)
@@ -133,21 +127,13 @@ class CupStackingEvalEnvCfg(SingleArmFrankaTaskEnvCfg):
         domain_randomization(
             self,
             random_options=[
-                randomize_object_uniform(
-                    "blue_cup",
-                    pose_range={
-                        "x": (-0.15, 0.15), 
-                        "y": (-0.15, 0.15),
-                        "z": (0.0, 0.0),
+                # Cups start 20 cm apart; resample when they land closer than 11 cm (they would overlap).
+                randomize_objects_apart(
+                    pose_ranges={
+                        "blue_cup": {"x": (-0.1, 0.1), "y": (-0.1, 0.1), "z": (0.0, 0.0)},
+                        "pink_cup": {"x": (-0.1, 0.1), "y": (-0.1, 0.1), "z": (0.0, 0.0)},
                     },
-                ),
-                randomize_object_uniform(
-                    "pink_cup", 
-                    pose_range={
-                        "x": (-0.15, 0.15), 
-                        "y": (-0.15, 0.15),
-                        "z": (0.0, 0.0),
-                    },
+                    min_distance=0.11,
                 ),
                 randomize_light_conditions(
                     "rect_light",

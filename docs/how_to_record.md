@@ -1,8 +1,7 @@
 # How to Record Episodes
 
 This guide shows you how to turn your controller into a pipeline that writes a
-LeRobot v3 dataset. Your controller can be a scripted state machine or a person
-using the keyboard. The main path uses a LeRobot recorder connected to the
+LeRobot v3 dataset. The main path uses a LeRobot recorder connected to the
 Isaac Lab environment and saves each successful attempt as one dataset episode.
 [Section 8](#8-advanced-option-write-the-dataset-yourself) shows a
 second way, where you write the dataset yourself with LeRobot's
@@ -42,7 +41,7 @@ You have already picked one task. Here is what the environment gives you:
 | Task id | `HCIS-CupStacking-SingleArm-v0` | `HCIS-CutleryArrangement-SingleArm-v0` | `HCIS-ToyBlocksCollection-SingleArm-v0` |
 | Objects (`env.scene[name]`) | `blue_cup`, `pink_cup` | `plate`, `fork`, `knife` | `green_block`, `blue_block`, `red_block`, `storage_box` |
 | Task text saved in the dataset | `pick up the blue cup and place it on the pink cup.` | `place the fork on the left and knife on the right of the plate.` | `pick up the toys and place them into the storage box.` |
-| Built-in success check | Blue cup within 5 cm of the pink cup in x and y, and more than 10 cm higher | Fork and knife both within 15 cm (xy) of the plate; fork on the +x side of the plate, knife on the −x side | Every block within 12 cm (x, y) and 8 cm (z) of the box |
+| Built-in success check | Blue cup within 5 cm of the pink cup in x and y, and more than 10 cm higher | Fork and knife both within 15 cm (xy) of the plate; fork at smaller x than the plate (the robot's left, the right side of the front image), knife at larger x | Every block within 12 cm (x, y) and 8 cm (z) of the box |
 | Defined in | [`cup_stacking_env_cfg.py`](../packages/simulator/src/simulator/tasks/cup_stacking/cup_stacking_env_cfg.py) | [`cutlery_arrangement_env_cfg.py`](../packages/simulator/src/simulator/tasks/cutlery_arrangement/cutlery_arrangement_env_cfg.py) | [`toy_blocks_collection_env_cfg.py`](../packages/simulator/src/simulator/tasks/toy_blocks_collection/toy_blocks_collection_env_cfg.py) |
 
 The shared robot, camera, action, and timing defaults are defined in
@@ -53,8 +52,11 @@ controller separate from dataset-writing code so that the task logic can be
 tested without recording.
 
 The shared config uses one simulation step per control step
-(`decimation = 1`) and a 15-second environment timeout. Your collection loop
-may disable that timeout and end an episode when the controller reports
+(`decimation = 1`). Each task sets an episode time-out equal to its graded
+episode length: cup stacking 20 s, cutlery arrangement 40 s, toy blocks
+collection 60 s. Evaluation stops a policy at that time, so your
+demonstrations should finish well within it. Your collection loop may disable
+the time-out and end an episode when the controller reports
 `is_episode_done`; therefore every custom controller must include its own
 phase/episode limit.
 
@@ -106,7 +108,8 @@ This design has some consequences you need to plan for (source:
 6. **`finalize()` is mandatory.** Without it the parquet files have no footer
    and the dataset can't be loaded.
 7. **The dataset goes to `$HF_LEROBOT_HOME/<repo_id>`** (by default
-   `~/.cache/huggingface/lerobot/<repo_id>`). If that folder already exists,
+   `~/.cache/huggingface/lerobot/<repo_id>`; in the container this folder is
+   `datasets/<repo_id>` on the host). If that folder already exists,
    creating the dataset fails with `FileExistsError`.
 
 ### 2.1 Use the repository's `LeRobotRecorderManager`
@@ -171,6 +174,7 @@ def set_success(env, success: bool):
 
 # 1. Configure the env before it is created.
 env_cfg = parse_env_cfg(args.task, device=args.device, num_envs=1)
+env_cfg.use_joint_position_actions()  # same robot and action setup as rollout; required
 env_cfg.terminations.time_out = None  # the controller decides when an attempt ends
 env_cfg.terminations.success = TerminationTermCfg(  # starts False; set_success() flips it
     func=lambda env: torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
@@ -185,7 +189,7 @@ env = gym.make(args.task, cfg=env_cfg).unwrapped
 del env.recorder_manager
 env.recorder_manager = LeRobotRecorderManager(
     env_cfg.recorders,
-    LeRobotDatasetCfg(repo_id=args.dataset_repo_id, fps=30),
+    LeRobotDatasetCfg(repo_id=args.dataset_repo_id, fps=60),  # see section 6
     env,
 )
 
@@ -429,7 +433,7 @@ python <your_collection_script>.py \
     --task HCIS-CupStacking-SingleArm-v0 \
     --num_envs 1 --device cuda --enable_cameras \
     --record --dataset_repo_id <hf_user>/cup-stacking-demos \
-    --dataset_fps 30 --num_episodes 50
+    --dataset_fps 60 --num_episodes 50
 
 # keyboard controller: needs the GUI and real-time speed
 python <your_collection_script>.py \
@@ -437,7 +441,7 @@ python <your_collection_script>.py \
     --input keyboard --num_envs 1 --device cuda \
     --enable_cameras --record \
     --dataset_repo_id <hf_user>/cup-stacking-demos \
-    --dataset_fps 30 --num_episodes 20
+    --dataset_fps 60 --num_episodes 20
 ```
 
 Run inside the Isaac Lab environment. The option names above are illustrative;
@@ -447,11 +451,13 @@ keep only successful episodes in the training dataset.
 
 ## 6. Choosing `fps`
 
-The simulator advances at 60 Hz (`sim.dt = 1/60`, `decimation = 1`). Use a
-dataset FPS of 30 to match the camera update period and the current collection
-convention. Keep this value unchanged unless you also
-change the recorder/evaluation contract. It is dataset metadata, not a command
-to change the physics step rate.
+Robot state and action are recorded every simulation step (60 Hz). Camera
+images refresh at 30 Hz to save rendering cost, so each image appears on two
+consecutive frames. Record one frame per `env.step()`; never subsample.
+
+Set the dataset `fps` to **60**, so that frame timestamps match simulation
+time. The `fps` value is dataset metadata: it does not change the physics step
+rate or how often frames are written.
 
 Two things to know:
 
@@ -491,7 +497,7 @@ FEATURES = {  # base features produced by the repository recorder
 FEATURES.update(object_pose_features(OBJECTS))
 
 env_cfg = parse_env_cfg(args.task, device=args.device, num_envs=1)
-env_cfg.use_teleop_device("keyboard")
+env_cfg.use_joint_position_actions()  # same robot and action setup as rollout; required
 task_success = env_cfg.terminations.success
 env_cfg.terminations.success = None   # no automatic resets: you decide when an attempt ends
 env_cfg.terminations.time_out = None
@@ -499,7 +505,7 @@ env_cfg.recorders = None              # no Isaac Lab recorder at all
 env = gym.make(args.task, cfg=env_cfg).unwrapped
 
 dataset = LeRobotDataset.create(
-    repo_id=args.repo_id, fps=30, robot_type="franka_panda", features=FEATURES
+    repo_id=args.repo_id, fps=60, robot_type="franka_panda", features=FEATURES
 )
 
 try:
@@ -566,15 +572,17 @@ the policy learns the wrong cause and effect.
 
    ```bash
    uv run python scripts/verify_object_pose_coverage.py init \
-       --dataset ~/.cache/huggingface/lerobot/<hf_user>/cup-stacking-demos \
+       --dataset datasets/<hf_user>/cup-stacking-demos \
        --out specs/cup_stacking_coverage.ttl
    # Fill the TODO values in the generated Turtle file, then:
    uv run python scripts/verify_object_pose_coverage.py check \
-       --dataset ~/.cache/huggingface/lerobot/<hf_user>/cup-stacking-demos \
+       --dataset datasets/<hf_user>/cup-stacking-demos \
        --spec specs/cup_stacking_coverage.ttl
    ```
 
-   See [Object Pose Coverage](object_pose_coverage.md) for the meaning of the
+   Run these on the host, from the repository root: `datasets/` on the host
+   is the container's `~/.cache/huggingface/lerobot/`. See
+   [Object Pose Coverage](object_pose_coverage.md) for the meaning of the
    report. This check is a coverage diagnostic; it does not replace visual
    inspection or LeRobot loading.
 
@@ -602,6 +610,7 @@ the policy learns the wrong cause and effect.
 - [ ] Each episode is a single attempt that ends shortly after the task is done.
 - [ ] Your definition of "done" is stricter than, or equal to, the built-in check, and your script enforces it.
 - [ ] Failed, stuck, or interrupted attempts are dropped, never saved.
-- [ ] Dataset FPS is kept consistent across all sessions (recommended: 30).
+- [ ] `env_cfg.use_joint_position_actions()` is called before the env is created.
+- [ ] Dataset `fps` is 60 in every session.
 - [ ] `finalize()` runs at the end of every session.
 - [ ] The dataset loads in LeRobot and the object-pose coverage check passes when coverage is required.

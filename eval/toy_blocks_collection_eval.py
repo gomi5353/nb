@@ -10,11 +10,11 @@ from isaaclab.sim.schemas import MassPropertiesCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.seed import configure_seed
 
-from leisaac.utils.domain_randomization import domain_randomization, randomize_object_uniform
+from leisaac.utils.domain_randomization import domain_randomization
 from leisaac.utils.general_assets import parse_usd_and_create_subassets
 from simulator import ASSETS_ROOT
 from simulator.assets.scenes.living_room import LIVING_ROOM_CFG, LIVING_ROOM_USD_PATH
-from simulator.utils.domain_randomization import randomize_light_conditions
+from simulator.utils.domain_randomization import randomize_light_conditions, randomize_objects_apart
 from simulator.tasks.template.single_arm_franka_cfg import (
     SingleArmFrankaObservationsCfg,
     SingleArmFrankaTaskEnvCfg,
@@ -26,18 +26,6 @@ LIVING_OBJECTS_ROOT = ASSETS_ROOT / "scenes" / "living_room" / "objects"
 
 TABLE_USD = str(ASSETS_ROOT / "scenes" / "table_0000" / "table_0000.usd")
 TABLE_WORLD_POS: tuple[float, float, float] = (3.3, 1.1, 0.183)
-
-TAG_TO_OBJECT: dict[int, str] = {1: "green_block", 2: "blue_block", 3: "red_block"}
-ANCHOR_TAG_ID: int = 0
-ANCHOR_WORLD_POSE: tuple[float, float, float] = (0.35, 0.0, 0.0)
-
-OBJECT_ROLL: float = 0.0
-OBJECT_PITCH: float = 0.0
-PER_OBJECT_YAW_OFFSET: dict[str, float] = {
-    "green_block": math.pi / 2.0,
-    "blue_block": math.pi / 2.0,
-    "red_block": math.pi / 2.0,
-}
 
 
 configure_seed(42)
@@ -62,7 +50,7 @@ class ToyBlocksCollectionEvalSceneCfg(SingleArmFrankaTaskSceneCfg):
             mass_props=MassPropertiesCfg(mass=0.1),
         ),
         init_state=RigidObjectCfg.InitialStateCfg(
-            pos=(3.449251, 0.799812, 0.45),
+            pos=(3.45, 0.82, 0.45),
             rot=(0.707, 0.0, 0.0, 0.707),
         ),
     )
@@ -74,7 +62,7 @@ class ToyBlocksCollectionEvalSceneCfg(SingleArmFrankaTaskSceneCfg):
             mass_props=MassPropertiesCfg(mass=0.1),
         ),
         init_state=RigidObjectCfg.InitialStateCfg(
-            pos=(3.376005, 0.80095, 0.45),
+            pos=(3.33, 0.82, 0.45),
             rot=(0.707, 0.0, 0.0, 0.707),
         ),
     )
@@ -86,7 +74,7 @@ class ToyBlocksCollectionEvalSceneCfg(SingleArmFrankaTaskSceneCfg):
             mass_props=MassPropertiesCfg(mass=0.1),
         ),
         init_state=RigidObjectCfg.InitialStateCfg(
-            pos=(3.340758, 0.760893, 0.45),
+            pos=(3.39, 0.72, 0.45),
             rot=(0.26788, -0.2733, 0.65215, 0.65441),
         ),
     )
@@ -164,6 +152,7 @@ class ToyBlocksCollectionEvalEnvCfg(SingleArmFrankaTaskEnvCfg):
 
     def __post_init__(self) -> None:
         super().__post_init__()
+        self.episode_length_s = 60  # graded episode length for this task
 
         self.viewer.eye = (0.8, 0.87, 0.67)
         self.viewer.lookat = (0.4, -1.3, -0.2)
@@ -194,29 +183,14 @@ class ToyBlocksCollectionEvalEnvCfg(SingleArmFrankaTaskEnvCfg):
         domain_randomization(
             self,
             random_options=[
-                randomize_object_uniform(
-                    "green_block",
-                    pose_range={
-                        "x": (-0.05, 0.05),
-                        "y": (-0.05, 0.05),
-                        "z": (0.0, 0.0),
+                # Blocks start 12 cm apart; resample when two land closer than 8 cm (they would overlap).
+                randomize_objects_apart(
+                    pose_ranges={
+                        "green_block": {"x": (-0.03, 0.03), "y": (-0.03, 0.03), "z": (0.0, 0.0)},
+                        "blue_block": {"x": (-0.03, 0.03), "y": (-0.03, 0.03), "z": (0.0, 0.0)},
+                        "red_block": {"x": (-0.03, 0.03), "y": (-0.03, 0.03), "z": (0.0, 0.0)},
                     },
-                ),
-                randomize_object_uniform(
-                    "blue_block",
-                    pose_range={
-                        "x": (-0.05, 0.05),
-                        "y": (-0.05, 0.05),
-                        "z": (0.0, 0.0),
-                    },
-                ),
-                randomize_object_uniform(
-                    "red_block",
-                    pose_range={
-                        "x": (-0.05, 0.05),
-                        "y": (-0.05, 0.05),
-                        "z": (0.0, 0.0),
-                    },
+                    min_distance=0.08,
                 ),
                 randomize_light_conditions(
                     "rect_light",

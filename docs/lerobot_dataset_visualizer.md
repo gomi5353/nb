@@ -1,10 +1,10 @@
 # LeRobot Dataset Visualizer
 
-The Hugging Face Space at <https://huggingface.co/spaces/lerobot/visualize_dataset> is a hosted GUI for inspecting any LeRobot-format dataset published on the Hub. It pairs the recorded multi-camera video with per-frame `observation.state` / `action` plots and an episode picker — useful for spot-checking demonstrations after teleop or datagen, before sinking GPU time into training.
+The Hugging Face Space at <https://huggingface.co/spaces/lerobot/visualize_dataset> is a hosted GUI for inspecting any LeRobot-format dataset published on the Hub. It pairs the recorded multi-camera video with per-frame `observation.state` / `action` plots and an episode picker — useful for spot-checking your recorded demonstrations before sinking GPU time into training.
 
 ## When to use it
 
-- After running `scripts/teleop.py` or `scripts/datagen/generate.py` with `--use_lerobot_recorder` and pushing the resulting dataset to the Hub.
+- After recording a dataset with your collection script ([How to Record Episodes](how_to_record.md)) and uploading it to the Hub.
 - To audit episode boundaries, action-trace continuity, and camera framing without standing up a local viewer.
 - To share concrete examples with collaborators by URL — the Space accepts a `dataset` query parameter pointing at any public Hub repo.
 
@@ -12,31 +12,11 @@ It is **not** a recorder, decoder, or editor. Read-only inspection of already-pu
 
 ## Prerequisite: dataset on the Hub
 
-The Space loads via `repo_id`, so the dataset must already be published. Our recorder writes it locally and uploads when given a `repo_id`:
+The Space loads via `repo_id`, so the dataset must already be on the Hub. Your recording script
+writes it locally (`datasets/<hf_user>/<dataset_name>` on the host). Upload it from the host:
 
 ```bash
-uv run python scripts/teleop.py \
-    --task=HCIS-CupStacking-SingleArm-v0 \
-    --teleop_device=keyboard \
-    --num_envs=1 \
-    --device=cuda \
-    --enable_cameras \
-    --use_lerobot_recorder \
-    --lerobot_dataset_repo_id=<hf_user>/<dataset_name> \
-    --lerobot_dataset_fps=30
-```
-
-The same flags exist on `scripts/datagen/generate.py`. `LeRobotRecorderManager` (in the leisaac package) handles the Hub push.
-
-If you only have a local dataset, push it manually:
-
-```bash
-uv run huggingface-cli login
-uv run python -c "
-from lerobot.common.datasets.lerobot_dataset import LeRobotDataset
-ds = LeRobotDataset('<hf_user>/<dataset_name>', root='<local_dataset_path>')
-ds.push_to_hub()
-"
+hf upload <hf_user>/<dataset_name> datasets/<hf_user>/<dataset_name> --repo-type dataset
 ```
 
 Public datasets work without auth in the Space; private datasets require the viewer to be signed into the Hub with read access.
@@ -62,7 +42,7 @@ Two equivalent forms:
 | State plot | `observation.state` (Franka joint positions) | Continuous trajectories within joint limits; no jumps at episode boundaries |
 | Action plot | `action` (joint targets + gripper command) | Aligned with state, gripper open/close transitions match the task |
 | Episode picker | `episode_index` | Episode count matches expectation; per-episode length looks sane |
-| Frame scrubber | `frame_index` / `timestamp` | Total frames ≈ `fps × episode_seconds` (we record at 30 fps by default) |
+| Frame scrubber | `frame_index` / `timestamp` | Total frames ≈ `fps × episode_seconds` (60 fps: one frame per simulation step; each camera image repeats on two consecutive frames) |
 
 The Space reads features from the dataset's `meta/info.json`, so anything the recorder did not declare there will not appear. If a camera is missing from the video panel, check `LeRobotDatasetCfg.features` wiring in `leisaac.enhance.datasets.lerobot_dataset_handler`.
 
@@ -70,7 +50,7 @@ The Space reads features from the dataset's `meta/info.json`, so anything the re
 
 - **"Dataset not found"** — repo id typo, or the dataset is private and the Space session is not authenticated. Open the repo page directly first to confirm visibility.
 - **Video panel is blank but state plots load** — videos failed to encode at recording time, or the `meta/videos/` shards never uploaded. Check the local dataset directory for `videos/chunk-*/episode_*.mp4`.
-- **Action and state plots have different lengths** — recorder dropped frames; inspect `episode_data_index` in `meta/episodes.jsonl`.
+- **Action and state plots have different lengths** — recorder dropped frames; inspect the episode lengths in `meta/episodes/`.
 - **Episode boundaries look wrong** — typically a `done` / termination misfire. Cross-reference against the env's `terminations.success` predicate (e.g. `cutlery_arranged`, `toys_in_box`).
 
 ## Local alternative
@@ -78,15 +58,16 @@ The Space reads features from the dataset's `meta/info.json`, so anything the re
 If the dataset is too large to push, or you need offline inspection, use the LeRobot CLI shipped with the `lerobot` package:
 
 ```bash
-uv run python -m lerobot.scripts.visualize_dataset \
+lerobot-dataset-viz \
     --repo-id <hf_user>/<dataset_name> \
-    --root <local_dataset_path>
+    --root datasets/<hf_user>/<dataset_name> \
+    --episode-index 0
 ```
 
-Same plot/video layout, served from a local rerun.io viewer. Good for iterating on recording configs before committing to a Hub push.
+Run it on the host with the `uv` environment active. It shows the same plots and videos in a local rerun.io viewer. Good for iterating on recording configs before committing to a Hub push.
 
 ## References
 
 - Hosted visualizer: <https://huggingface.co/spaces/lerobot/visualize_dataset>
 - LeRobot dataset format spec: <https://huggingface.co/docs/lerobot>
-- Recorder wiring in this repo: `scripts/teleop.py:215-230`, `scripts/datagen/generate.py:162-179`
+- Recorder wiring: [How to Record Episodes](how_to_record.md)

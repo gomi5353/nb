@@ -1,6 +1,7 @@
 # LeRobot Checkpoint Format
 
-Layout of a LeRobot policy checkpoint (`lerobot==0.4.2`).
+Layout of a LeRobot policy checkpoint (`lerobot==0.4.4`). `lerobot-train` writes one per saved step to
+`<output_dir>/checkpoints/<step>/pretrained_model/`; `checkpoints/last` points to the newest.
 
 ```
 pretrained_model/

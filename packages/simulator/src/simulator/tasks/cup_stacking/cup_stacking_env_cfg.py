@@ -10,11 +10,10 @@ from isaaclab.sim.schemas import MassPropertiesCfg
 from isaaclab.utils import configclass
 
 from leisaac.utils.general_assets import parse_usd_and_create_subassets
-from leisaac.utils.domain_randomization import domain_randomization, randomize_object_uniform
+from leisaac.utils.domain_randomization import domain_randomization
 from simulator import ASSETS_ROOT
-from simulator.utils.object_poses_loader import ObjectPoseConfig
 from simulator.assets.scenes.kitchen import KITCHEN_CFG, KITCHEN_USD_PATH
-from simulator.utils.domain_randomization import randomize_light_conditions
+from simulator.utils.domain_randomization import randomize_light_conditions, randomize_objects_apart
 
 from simulator.tasks.template.single_arm_franka_cfg import (
     SingleArmFrankaObservationsCfg,
@@ -24,13 +23,6 @@ from simulator.tasks.template.single_arm_franka_cfg import (
 )
 
 KITCHEN_OBJECTS_ROOT = ASSETS_ROOT / "scenes" / "kitchen" / "objects"
-
-TAG_TO_OBJECT: dict[int, str] = {1: "blue_cup", 2: "pink_cup"}
-ANCHOR_TAG_ID: int = 0
-ANCHOR_WORLD_POSE: tuple[float, float, float] = (0.5, -0.2, 0.0)
-OBJECT_Z: float = 1.0
-OBJECT_ROLL: float = 0.0
-OBJECT_PITCH: float = 0.0
 
 
 @configclass
@@ -109,6 +101,7 @@ class CupStackingEnvCfg(SingleArmFrankaTaskEnvCfg):
 
     def __post_init__(self) -> None:
         super().__post_init__()
+        self.episode_length_s = 20  # graded episode length for this task
 
         self.viewer.eye = (0.8, 0.87, 0.67)
         self.viewer.lookat = (0.4, -1.3, -0.2)
@@ -148,21 +141,21 @@ class CupStackingEnvCfg(SingleArmFrankaTaskEnvCfg):
         domain_randomization(
             self,
             random_options=[
-                randomize_object_uniform(
-                    "blue_cup",
-                    pose_range={
-                        "x": (-0.05, 0.05),
-                        "y": (-0.05, 0.05),
-                        "z": (0.0, 0.0),
+                # Resample when the cups land closer than 11 cm (they would overlap).
+                randomize_objects_apart(
+                    pose_ranges={
+                        "blue_cup": {
+                            "x": (-0.05, 0.05),
+                            "y": (-0.05, 0.05),
+                            "z": (0.0, 0.0),
+                        },
+                        "pink_cup": {
+                            "x": (0.02, 0.05),
+                            "y": (0.02, 0.05),
+                            "z": (0.0, 0.0),
+                        },
                     },
-                ),
-                randomize_object_uniform(
-                    "pink_cup",
-                    pose_range={
-                        "x": (0.02, 0.05),
-                        "y": (0.02, 0.05),
-                        "z": (0.0, 0.0),
-                    },
+                    min_distance=0.11,
                 ),
                 randomize_light_conditions("light", textures=[], intensity_range=(1100, 1300)),
             ],

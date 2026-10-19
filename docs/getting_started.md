@@ -1,12 +1,12 @@
 # Getting Started
 
-End-to-end guide for the AI Capstone imitation-learning pipeline: generating synthetic demonstrations in simulation, then training and evaluating a robot manipulation policy.
+End-to-end guide for the AI Capstone imitation-learning pipeline: recording demonstrations in simulation with your own controller, then training and evaluating a robot manipulation policy.
 
 ## Overview
 
 This project builds imitation-learning policies for robot manipulation tasks (cup stacking, cutlery arrangement, toy blocks collection). The pipeline has four stages:
 
-1. **Simulate** — generate synthetic training data in Isaac Lab with preconfigured domain randomization
+1. **Record** demonstrations in Isaac Lab with a controller you write (scripted, keyboard, etc.)
 2. **Train** a policy model with LeRobot
 3. **Evaluate** the trained policy in the simulator (rollout)
 4. **Verify and diagnose** whether the dataset covers the conditions needed by the task
@@ -15,8 +15,8 @@ This project builds imitation-learning policies for robot manipulation tasks (cu
 
 | Stage | Environment | Why |
 |-------|-------------|-----|
-| Simulation (datagen + rollout) | GlowsAI | Isaac Sim / Isaac Lab / Vulkan stack pinned in image |
-| Training (`lerobot-train`) | GlowsAI | Docker adds I/O overhead — train natively for throughput |
+| Data Collection, Rollout | GPU machine, inside the Isaac Lab container | Isaac Sim / Isaac Lab / Vulkan stack pinned in image |
+| Training, Coverage check | GPU machine, host (`uv` environment) | Docker adds I/O overhead — train natively for throughput |
 
 > **GlowsAI VNC terminal:** When using the VNC desktop terminal on GlowsAI, switch to the `glows` user first:
 > ```bash
@@ -30,7 +30,7 @@ For details on the repo layout and developer setup, see [Developer Introduction]
 - **Python 3.11** — required by the project (pinned in `.python-version`)
 - **[uv](https://docs.astral.sh/uv/)** — Python package manager used for this workspace
 - **Git** — with submodule support
-- **Docker + Docker Compose** — required for simulation steps (Isaac Lab runs in a container)
+- **Docker** — required for simulation steps (Isaac Lab runs in a container)
 - **Linux machine with Nvidia GPU + driver** — required for simulation and training. Verify with `nvidia-smi`.
 - **Hugging Face account** — datasets and model checkpoints are stored on the Hub. Create a token at <https://huggingface.co/docs/hub/en/security-tokens>.
 
@@ -48,7 +48,7 @@ sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyring
 sudo chmod a+r /etc/apt/keyrings/docker.asc
 echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 sudo apt-get update
-sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin
 
 # Add your user to the docker group (avoids needing sudo for docker commands)
 sudo usermod -aG docker $USER
@@ -59,24 +59,20 @@ Verify installations:
 
 ```bash
 docker --version
-docker compose version
 ```
 
 ## Installation
 
 ```bash
-# Initialize submodules (required before Docker build)
-make submodules
+git clone https://github.com/gomi5353/supercoolcourseproject
+cd supercoolcourseproject
 
-# Install all Python dependencies
+# Install the host Python environment (training, coverage check)
 uv sync
 source .venv/bin/activate
-
-# Build and launch the Isaac Lab container (simulation, datagen, rollout)
-# Pick the target matching your GlowsAI GPU:
-make launch-isaaclab-glowsai-4090   # RTX 4090
-make launch-isaaclab-glowsai-l40s   # L40S
 ```
+
+The Isaac Lab container is built the first time you launch it (Step 1).
 
 ### Hugging Face login
 
@@ -89,65 +85,59 @@ Set `HF_USER` each terminal session — commands throughout this project referen
 
 ---
 
-## Step 1: Generate Synthetic Data in Simulation
+## Step 1: Record Demonstrations in Simulation
 
-> **Run on: GPU machine, inside Docker container.** Requires Linux + Nvidia GPU + Docker (see Prerequisites).
+> **Run on: GPU machine, inside Docker container.**  Requires Linux + Nvidia GPU + Docker (see Prerequisites).
 
 ### Launch the Isaac Lab container
 
-Pick the target matching your GlowsAI GPU:
+| Target | Machine |
+|--------|---------|
+| `make launch-isaaclab` | Local machine with an Nvidia GPU |
+| `make launch-isaaclab-glowsai-4090` | GlowsAI RTX 4090 (VNC display :1) |
+| `make launch-isaaclab-glowsai-l40s` | GlowsAI L40S (VNC display :1) |
 
-| Target | GPU |
-|--------|-----|
-| `make launch-isaaclab-glowsai-4090` | RTX 4090 (VNC display :1) |
-| `make launch-isaaclab-glowsai-l40s` | L40S (VNC display :1) |
+The first launch initializes the git submodules and builds the image. All remaining commands in this
+step run **inside the container**, from the repository root. The container is a new shell, so run
+`export HF_USER=<your-huggingface-username>` there too.
 
-```bash
-# GlowsAI — pick one:
-make launch-isaaclab-glowsai-4090
-make launch-isaaclab-glowsai-l40s
-```
+### Write your collection script and record
 
-All remaining commands in this step run **inside the container**.
+You write the collection entry point for your task: a controller (a scripted state machine,
+keyboard teleoperation, or another input source) connected to the simulator and to a LeRobot
+dataset writer. [How to Record Episodes](how_to_record.md) explains the recorder, the action format,
+a controller skeleton, and how to check the result. Decide yourself how many episodes you need and
+which object positions they must cover.
 
-### Run data generation
+Tasks:
 
-Each task ships with preconfigured domain randomization: object poses are re-randomized at every environment reset, so no recorded pose file is needed. `--num_demos` sets the number of randomized episodes to run, and `--use_lerobot_recorder` saves the result in [LeRobot dataset format](https://huggingface.co/docs/lerobot/main/en/lerobot-dataset-v3#format-design). Only successful episodes are exported.
+| Task | Task id |
+|------|---------|
+| Cup stacking | `HCIS-CupStacking-SingleArm-v0` |
+| Cutlery arrangement | `HCIS-CutleryArrangement-SingleArm-v0` |
+| Toy blocks collection | `HCIS-ToyBlocksCollection-SingleArm-v0` |
 
-Available tasks:
-- `HCIS-CupStacking-SingleArm-v0`
-- `HCIS-CutleryArrangement-SingleArm-v0`
-- `HCIS-ToyBlocksCollection-SingleArm-v0`
+A dataset with repo id `${HF_USER}/<repo_id>` recorded inside the container is saved to
+`~/.cache/huggingface/lerobot/${HF_USER}/<repo_id>/`, which is mounted from
+`datasets/${HF_USER}/<repo_id>/` on the host.
 
-```bash
-python scripts/datagen/generate.py \
-    --task HCIS-CupStacking-SingleArm-v0 \
-    --num_envs 1 \
-    --device cuda \
-    --enable_cameras \
-    --record \
-    --use_lerobot_recorder \
-    --lerobot_dataset_repo_id ${HF_USER}/<repo_id> \
-    --num_demos 20
-```
+### Inspect and upload the dataset
 
-The dataset lands in `~/.cache/huggingface/lerobot/${HF_USER}/<repo_id>/`.
-
-### Upload the generated dataset
+Check a few episodes with the [LeRobot Dataset Visualizer](lerobot_dataset_visualizer.md). Then, on
+the host, upload the dataset if you want to train from the Hub (you can also train from the local
+folder, see Step 2):
 
 ```bash
-hf upload ${HF_USER}/<repo_id> ./datasets/${HF_USER}/<repo_id>/
+hf upload ${HF_USER}/<repo_id> datasets/${HF_USER}/<repo_id> --repo-type dataset
 ```
-
-For the full data generation pipeline reference, see [Synthetic Data Generation Pipeline](synthetic_data_generation.md).
 
 ---
 
 ## Step 2: Train a Policy
 
-> **Run on: GPU machine, host (not inside Docker).
+> **Run on: GPU machine, host (not inside Docker).**
 
-It uses your uploaded dataset from Step 1 and produces a trained policy checkpoint.
+It uses your dataset from Step 1 and produces a trained policy checkpoint.
 
 **Quick start:**
 
@@ -156,6 +146,7 @@ uv sync && source .venv/bin/activate
 
 lerobot-train \
   --dataset.repo_id=${HF_USER}/<repo_id> \
+  --dataset.root=datasets/${HF_USER}/<repo_id> \
   --policy.type=diffusion \
   --output_dir=<your-output-dir> \
   --job_name=cupstacking \
@@ -182,20 +173,21 @@ python scripts/rollout.py \
     --task=<eval_task_file> \
     --policy_type=lerobot-<policy_name> \
     --policy_checkpoint_path=<path/to/checkpoint> \
-    --policy_action_horizon=1 \
     --device=cuda \
     --enable_cameras \
-    --eval_rounds=<num_rounds> \
-    --episode_length_s=20
+    --eval_rounds=<num_rounds>
 ```
+
+Each episode runs for the task's graded length (cup stacking 20 s, cutlery arrangement 40 s, toy
+blocks collection 60 s).
 
 Placeholders:
 
 | Placeholder | Meaning |
 |-------------|---------|
 | `<eval_task_file>` | Path to an evaluation task file under `eval/` (see table below) |
-| `<policy_name>` | LeRobot policy variant — e.g. `diffusion`, `act`, `pi0` (full flag becomes `lerobot-diffusion`, etc.) |
-| `<path/to/checkpoint>` | Local path to the trained policy checkpoint directory |
+| `<policy_name>` | LeRobot policy type, e.g. `diffusion`, `act`, `pi0` (the flag becomes `lerobot-diffusion`, etc.). Required |
+| `<path/to/checkpoint>` | Local path to the `pretrained_model` directory of your checkpoint |
 | `<num_rounds>` | Number of evaluation episodes to roll out |
 
 Pick `--task` from the evaluation task files under `eval/`:
@@ -204,7 +196,7 @@ Pick `--task` from the evaluation task files under `eval/`:
 |------|-----------|
 | Cup stacking | `eval/cup_stacking_eval.py` |
 | Cutlery arrangement | `eval/cutlery_arrangement_eval.py` |
-| Toy blocks collection | `eval/toy_blocks_collection_eval` |
+| Toy blocks collection | `eval/toy_blocks_collection_eval.py` |
 
 For the full procedure including model download and flag reference, see [LeRobot Rollout (Policy Evaluation)](lerobot_rollout.md).
 
@@ -214,7 +206,7 @@ For the full procedure including model download and flag reference, see [LeRobot
 
 A failed rollout does not automatically mean that the model architecture or training strategy is the
 problem. Instead, first inspect whether the training dataset covers the conditions that
-appeared during evaluation. To help user verify their collected data, we provide **object-pose coverage** 
+appeared during evaluation. To help you verify your collected data, we provide **object-pose coverage**
 as a complete example from Star-Gen taxonomy. It records each object's pose in the [LeRobot v3 dataset](https://huggingface.co/docs/lerobot/main/en/lerobot-dataset-v3#format-design), describes the coverage
 requirement in RDF/OWL, and uses SHACL to report which spatial cells have too few
 episodes. Follow [Object Pose Coverage](object_pose_coverage.md) to record the
@@ -224,7 +216,7 @@ Coverage is a diagnostic, not proof of the cause: an uncovered evaluation region
 is evidence of a possible data-distribution gap, while complete coverage does not
 guarantee that a policy will succeed.
 
-If your hypothesis concerns a different factor, you can also select it from Star-Gen taxonomy, and follow
+If your hypothesis concerns a different factor, you can also select it from Star-Gen taxonomy or from another paper, and follow
 [Adding a New Dataset Coverage Factor](adding_coverage_factor.md). It explains the
 full extension path from recording a LeRobot feature through RDF graph mapping,
 OWL vocabulary, SHACL counting rules, reports, and tests.
@@ -237,10 +229,9 @@ OWL vocabulary, SHACL counting rules, reports, and tests.
 |----------|-------------|
 | [Developer Introduction](dev/introduction.md) | Repo layout, environment setup, where to run what |
 | [Isaac Lab + LeIsaac Configuration Tutorial](isaaclab_leisaac_tutorial.md) | Configuring Isaac Lab with LeIsaac |
-| [Keyboard Teleoperation](keyboard_teleoperation.md) | Drive the Franka from the keyboard for debugging or recording |
+| [How to Record Episodes](how_to_record.md) | Controller, recording loop, and dataset checks |
 | [LeRobot Dataset Visualizer](lerobot_dataset_visualizer.md) | Inspecting datasets before training |
 | [LeRobot Checkpoint Format](lerobot-model-format.md) | Understanding model checkpoint structure |
 | [Standalone Env Config Export](standalone_env_config_export.md) | Exporting environment configs as standalone files |
-| [Synthetic Data Generation Pipeline](synthetic_data_generation.md) | Full datagen pipeline reference |
 | [Object Pose Coverage](object_pose_coverage.md) | Check whether initial object poses cover a required spatial region |
 | [Adding a New Dataset Coverage Factor](adding_coverage_factor.md) | Extend verification to lighting, viewpoint, orientation, or another factor |
