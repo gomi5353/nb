@@ -181,7 +181,7 @@ Before you call your env config "exported":
 ## 4. External / private rollout (file outside the repo tree)
 
 For private leaderboard tasks, secret eval scenes, and per-student variants
-the env config must stay **out of the public `aicapstone` tree**.
+the env config must stay **out of the public `physicalai` tree**.
 `scripts/rollout.py` accepts `--task` in three forms, resolved by
 `simulator.tasks.external.resolve_task`:
 
@@ -231,7 +231,7 @@ make launch-isaaclab
 Inside the container shell:
 
 ```bash
-# Stage the private file *outside* /workspace/aicapstone to prove there is
+# Stage the private file *outside* /workspace/physicalai to prove there is
 # no in-tree side effect.
 mkdir -p /tmp/private_smoke
 cat > /tmp/private_smoke/private_cup_stacking_smoke.py <<'PY'
@@ -256,7 +256,7 @@ python scripts/rollout.py \
 ```
 
 The external invocation logs `Parsing configuration from:
-_aicapstone_external_task_<hex>:PrivateCupStackingSmokeEnvCfg`; the gym-id
+_physicalai_external_task_<hex>:PrivateCupStackingSmokeEnvCfg`; the gym-id
 invocation logs `Parsing configuration from:
 simulator.tasks.cup_stacking.cup_stacking_env_cfg:CupStackingEnvCfg`. Beyond
 that loader-prefix difference the two runs follow identical code paths.
@@ -266,7 +266,7 @@ that loader-prefix difference the two runs follow identical code paths.
 - The external file must not be imported before
   `simulation_app = AppLauncher(...).app` finishes booting — it pulls in
   `isaaclab.*`. `scripts/rollout.py` already orders the import correctly.
-- The synthetic module name `_aicapstone_external_task_<hex>` is inserted
+- The synthetic module name `_physicalai_external_task_<hex>` is inserted
   into `sys.modules` before `exec_module`, so `parse_env_cfg` can resolve
   `f"{__name__}:<Class>"` back through `importlib.import_module`.
 - Repeated `resolve_task` calls on the same absolute path within one process

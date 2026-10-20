@@ -228,6 +228,7 @@ How to read it:
 | Option | Effect |
 |---|---|
 | `--json report.json` | Full report (counts per cell, all findings) as JSON, for your own plots or scripts |
+| `--no-graph-out` | Do not write the RDF graph that SHACL validates. By default `check` writes it (your spec, the generated cells, every episode and initial placement) to `outputs/object_pose_coverage/<dataset>.ttl`, to inspect or query with SPARQL |
 | `--strict` | Treat warnings as failures |
 | `--extra-shapes my_rules.ttl` | Also run your own SHACL rules (section 7); repeatable |
 
@@ -284,7 +285,7 @@ What `check` does:
 To add your own rules (for example "initial z must be above the table"), write SHACL shapes in a separate `.ttl` file and pass it with `--extra-shapes`. The packaged shapes in `shapes/object_pose_coverage.ttl` are commented and are a good starting point. A minimal example:
 
 ```turtle
-@prefix dv:  <urn:aicapstone:dv#> .
+@prefix dv:  <urn:physicalai:dv#> .
 @prefix sh:  <http://www.w3.org/ns/shacl#> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 

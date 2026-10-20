@@ -144,7 +144,7 @@ Create a clearly named ontology under
 `lighting.ttl`. A minimal vocabulary might be:
 
 ```turtle
-@prefix dv:   <urn:aicapstone:dv#> .
+@prefix dv:   <urn:physicalai:dv#> .
 @prefix owl:  <http://www.w3.org/2002/07/owl#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
@@ -184,8 +184,8 @@ Add a template under
 `packages/data_verification/src/data_verification/templates/`:
 
 ```turtle
-@prefix dv:   <urn:aicapstone:dv#> .
-@prefix spec: <urn:aicapstone:spec:lighting#> .
+@prefix dv:   <urn:physicalai:dv#> .
+@prefix spec: <urn:physicalai:spec:lighting#> .
 
 spec:lighting a dv:LightingCoverageRequirement ;
     dv:minLux 300.0 ;

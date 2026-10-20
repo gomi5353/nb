@@ -9,7 +9,7 @@ from rdflib import RDF, XSD, Graph, Literal, Namespace, URIRef
 
 from .dataset import DatasetPlacements
 
-DV = Namespace("urn:aicapstone:dv#")
+DV = Namespace("urn:physicalai:dv#")
 
 
 def expand_cells(graph: Graph) -> None:
@@ -52,7 +52,7 @@ def expand_cells(graph: Graph) -> None:
 
 def add_dataset(graph: Graph, dataset_name: str, data: DatasetPlacements) -> URIRef:
     """Add the dataset, its episodes and their finite initial placements."""
-    dataset = URIRef(f"urn:aicapstone:data:{quote(dataset_name, safe='')}")
+    dataset = URIRef(f"urn:physicalai:data:{quote(dataset_name, safe='')}")
     graph.add((dataset, RDF.type, DV.Dataset))
 
     objects = {str(graph.value(obj, DV.objectName)): obj for obj in graph.subjects(RDF.type, DV.TaskObject)}

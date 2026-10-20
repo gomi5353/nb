@@ -10,7 +10,7 @@
 # STAR-Gen, "A Taxonomy for Evaluating Generalist Robot Manipulation Policies"
 # (https://stargen-taxonomy.github.io/), where Object Pose (POSE) is one axis.
 
-@prefix dv:   <urn:aicapstone:dv#> .
+@prefix dv:   <urn:physicalai:dv#> .
 @prefix owl:  <http://www.w3.org/2002/07/owl#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .

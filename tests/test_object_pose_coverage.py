@@ -17,8 +17,8 @@ from data_verification.spec_template import template_text
 ROOT = Path(__file__).resolve().parents[1]
 
 SPEC = """
-@prefix dv:   <urn:aicapstone:dv#> .
-@prefix spec: <urn:aicapstone:spec:test#> .
+@prefix dv:   <urn:physicalai:dv#> .
+@prefix spec: <urn:physicalai:spec:test#> .
 
 spec:cube a dv:TaskObject ; dv:objectName "cube" .
 spec:cube_coverage a dv:CoverageRequirement ;
@@ -247,3 +247,18 @@ def test_extra_shapes_example_from_docs(tmp_path: Path, spec: Path) -> None:
     rules.write_text(_doc_extra_shape_example().replace('"0.5"', '"1.0"'))
     report = verify_object_pose_coverage(dataset, spec, extra_shapes=[rules])
     assert [(v.message, v.count) for v in report.violations] == [("dv:z: Object starts below the table", 4)]
+
+
+def test_graph_out_writes_placements_and_cells(tmp_path: Path, spec: Path) -> None:
+    from rdflib import RDF, Graph
+
+    from data_verification.graph import DV
+
+    dataset = write_dataset(tmp_path / "ds", {i: {"cube": [xy]} for i, xy in enumerate(CELL_CENTERS)})
+    out = tmp_path / "out" / "graph.ttl"
+    report = verify_object_pose_coverage(dataset, spec, graph_out=out)
+    assert report.passed, format_report(report)
+    graph = Graph().parse(out, format="turtle")
+    assert len(list(graph.subjects(RDF.type, DV.Episode))) == 4
+    assert len(list(graph.subjects(RDF.type, DV.ObjectPlacement))) == 4
+    assert len(list(graph.subjects(RDF.type, DV.CoverageCell))) == 4

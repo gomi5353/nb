@@ -23,6 +23,8 @@ from pathlib import Path
 from data_verification import format_report, verify_object_pose_coverage, write_spec
 from data_verification.dataset import DatasetError, read_initial_placements
 
+GRAPH_DIR = Path("outputs/object_pose_coverage")
+
 
 def cmd_init(args: argparse.Namespace) -> int:
     observed = None
@@ -50,8 +52,11 @@ def cmd_init(args: argparse.Namespace) -> int:
 
 
 def cmd_check(args: argparse.Namespace) -> int:
-    report = verify_object_pose_coverage(args.dataset, args.spec, extra_shapes=args.extra_shapes)
+    graph_out = None if args.no_graph_out else GRAPH_DIR / f"{args.dataset.resolve().name}.ttl"
+    report = verify_object_pose_coverage(args.dataset, args.spec, extra_shapes=args.extra_shapes, graph_out=graph_out)
     print(format_report(report))
+    if graph_out is not None:
+        print(f"Graph written to {graph_out}")
     if args.json:
         args.json.parent.mkdir(parents=True, exist_ok=True)
         args.json.write_text(json.dumps(report.to_dict(), indent=2) + "\n")
@@ -72,6 +77,11 @@ def main() -> int:
     check.add_argument("--dataset", required=True, type=Path, help="Local LeRobot v3 dataset directory.")
     check.add_argument("--spec", required=True, type=Path, help="Your coverage spec (.ttl).")
     check.add_argument("--json", type=Path, help="Also write the full report as JSON.")
+    check.add_argument(
+        "--no-graph-out",
+        action="store_true",
+        help=f"Do not write the RDF graph that SHACL validates (default: {GRAPH_DIR}/<dataset>.ttl).",
+    )
     check.add_argument("--strict", action="store_true", help="Also fail on warnings.")
     check.add_argument(
         "--extra-shapes", type=Path, action="append", default=[], help="Additional SHACL rules (.ttl); repeatable."

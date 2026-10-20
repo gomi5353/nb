@@ -1,4 +1,4 @@
-# AI Capstone
+# Physical AI
 
 Imitation learning for robot manipulation in simulation. You pick one of three tasks, build your own
 data collection for it in Isaac Lab, train a policy with LeRobot, and evaluate the policy with the
