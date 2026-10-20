@@ -81,7 +81,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /workspace/aicapstone
+WORKDIR /workspace/physicalai
 
 RUN python -m pip install --upgrade pip \
     && python -m pip install -U \
@@ -98,8 +98,8 @@ RUN python -m pip install --upgrade pip \
         huggingface-hub==0.35.3 \
         transformers==4.57.6
 
-COPY dependencies/IsaacLab /workspace/aicapstone/dependencies/IsaacLab
-COPY packages/simulator /workspace/aicapstone/packages/simulator
+COPY dependencies/IsaacLab /workspace/physicalai/dependencies/IsaacLab
+COPY packages/simulator /workspace/physicalai/packages/simulator
 
 RUN test -x dependencies/IsaacLab/isaaclab.sh || \
     (echo "dependencies/IsaacLab is not initialized. Run 'git submodule update --init --recursive' before 'docker build'." >&2; exit 1)

@@ -1,6 +1,6 @@
-# simulator (aicapstone)
+# simulator (physicalai)
 
-AICapstone-specific simulator config layer built on top of the upstream `leisaac` package.
+Physical AI-specific simulator config layer built on top of the upstream `leisaac` package.
 
 Contents:
 

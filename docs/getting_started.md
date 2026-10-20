@@ -1,6 +1,6 @@
 # Getting Started
 
-End-to-end guide for the AI Capstone imitation-learning pipeline: recording demonstrations in simulation with your own controller, then training and evaluating a robot manipulation policy.
+End-to-end guide for the Physical AI imitation-learning pipeline: recording demonstrations in simulation with your own controller, then training and evaluating a robot manipulation policy.
 
 ## Overview
 

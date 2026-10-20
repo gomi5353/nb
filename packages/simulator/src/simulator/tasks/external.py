@@ -90,7 +90,7 @@ def _load_from_file(path: Path) -> str:
     if parent not in sys.path:
         sys.path.insert(0, parent)
 
-    mod_name = f"_aicapstone_external_task_{uuid.uuid4().hex}"
+    mod_name = f"_physicalai_external_task_{uuid.uuid4().hex}"
     spec_obj = importlib.util.spec_from_file_location(mod_name, path)
     if spec_obj is None or spec_obj.loader is None:
         raise RuntimeError(f"Could not build import spec for '{path}'")

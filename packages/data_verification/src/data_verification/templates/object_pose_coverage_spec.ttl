@@ -15,8 +15,8 @@
 # object; copy a block to check another one. Objects without a block are
 # recorded but never checked.
 
-@prefix dv:   <urn:aicapstone:dv#> .
-@prefix spec: <urn:aicapstone:spec:mine#> .
+@prefix dv:   <urn:physicalai:dv#> .
+@prefix spec: <urn:physicalai:spec:mine#> .
 
 # --- BEGIN OBJECT ---
 spec:OBJECT_NAME a dv:TaskObject ;

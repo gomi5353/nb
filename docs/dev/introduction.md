@@ -59,7 +59,7 @@ make launch-isaaclab
 It initializes the submodules and builds the image first. The Isaac Lab submodule must be
 initialized before the build; the `Dockerfile` fails fast otherwise.
 
-The container mounts the repository at `/workspace/aicapstone` and the host's `datasets/` at
+The container mounts the repository at `/workspace/physicalai` and the host's `datasets/` at
 `~/.cache/huggingface/lerobot` (LeRobot's default dataset folder), so a dataset recorded in the
 container appears in `datasets/<repo_id>` on the host.
 

@@ -37,7 +37,7 @@ def _isolate_registry_and_cache():
     external_mod._FILE_LOAD_CACHE.clear()
     external_mod._FILE_LOAD_CACHE.update(saved_cache)
     for mod_name in list(sys.modules.keys()):
-        if mod_name not in saved_modules and mod_name.startswith("_aicapstone_external_task_"):
+        if mod_name not in saved_modules and mod_name.startswith("_physicalai_external_task_"):
             del sys.modules[mod_name]
 
 

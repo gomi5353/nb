@@ -8,13 +8,13 @@
 # All episodes count toward coverage, whether the recorded attempt succeeded
 # or failed: coverage is about which initial scenes the data shows.
 
-@prefix dv:   <urn:aicapstone:dv#> .
+@prefix dv:   <urn:physicalai:dv#> .
 @prefix sh:   <http://www.w3.org/ns/shacl#> .
 @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
 @prefix owl:  <http://www.w3.org/2002/07/owl#> .
 
 dv: a owl:Ontology ;
-    sh:declare [ sh:prefix "dv" ; sh:namespace "urn:aicapstone:dv#"^^xsd:anyURI ] .
+    sh:declare [ sh:prefix "dv" ; sh:namespace "urn:physicalai:dv#"^^xsd:anyURI ] .
 
 # ---- Episode: one initial placement per required object ---------------------
 

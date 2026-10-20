@@ -13,7 +13,7 @@ CONTAINER_NAME ?= isaaclab
 # (LeRobot videos are even 0600). Hand these dirs back to the host user.
 HOST_UID       ?= $(shell id -u)
 HOST_GID       ?= $(shell id -g)
-OWNED_DIRS     ?= /workspace/aicapstone/datasets /workspace/aicapstone/outputs
+OWNED_DIRS     ?= /workspace/physicalai/datasets /workspace/physicalai/outputs
 restore_ownership = chown -R $(HOST_UID):$(HOST_GID) $(OWNED_DIRS) 2>/dev/null || true
 
 # ---- Shared shell snippets ---------------------------------------------------
@@ -81,8 +81,8 @@ launch-isaaclab: build-isaaclab
 		--ipc=host \
 		--ulimit memlock=-1 \
 		--ulimit stack=67108864 \
-		-v $(shell pwd):/workspace/aicapstone \
-		-v /workspace/aicapstone/.venv \
+		-v $(shell pwd):/workspace/physicalai \
+		-v /workspace/physicalai/.venv \
 		-v $(shell pwd)/datasets:/root/.cache/huggingface/lerobot \
 		-v /tmp/.X11-unix:/tmp/.X11-unix:rw \
 		-v /usr/share/vulkan/icd.d:/usr/share/vulkan/icd.d:ro \
@@ -101,7 +101,7 @@ launch-isaaclab: build-isaaclab
 			ls -l /usr/share/vulkan/icd.d /etc/vulkan/icd.d 2>/dev/null || true; \
 			$(select_vulkan_icd); \
 			$(require_runtime_libs); \
-			cd /workspace/aicapstone; \
+			cd /workspace/physicalai; \
 			/bin/bash || true; \
 			echo "== restoring host ownership of $(OWNED_DIRS) =="; \
 			$(restore_ownership); \
@@ -118,8 +118,8 @@ launch-isaaclab-glowsai-4090: build-isaaclab
 		--ulimit memlock=-1 \
 		--ulimit stack=67108864 \
 		--shm-size=16g \
-		-v $(shell pwd):/workspace/aicapstone \
-		-v /workspace/aicapstone/.venv \
+		-v $(shell pwd):/workspace/physicalai \
+		-v /workspace/physicalai/.venv \
 		-v $(shell pwd)/datasets:/root/.cache/huggingface/lerobot \
 		-v /home/glows/.Xauthority:/root/.Xauthority:ro \
 		-v /tmp/.X11-unix:/tmp/.X11-unix:rw \
@@ -143,7 +143,7 @@ launch-isaaclab-glowsai-4090: build-isaaclab
 			ls -l /usr/share/vulkan/icd.d /etc/vulkan/icd.d 2>/dev/null || true; \
 			$(select_vulkan_icd); \
 			$(require_runtime_libs); \
-			cd /workspace/aicapstone; \
+			cd /workspace/physicalai; \
 			/bin/bash || true; \
 			echo "== restoring host ownership of $(OWNED_DIRS) =="; \
 			$(restore_ownership); \
@@ -160,8 +160,8 @@ launch-isaaclab-glowsai-l40s: build-isaaclab
 		--ulimit memlock=-1 \
 		--ulimit stack=67108864 \
 		--shm-size=16g \
-		-v $(shell pwd):/workspace/aicapstone \
-		-v /workspace/aicapstone/.venv \
+		-v $(shell pwd):/workspace/physicalai \
+		-v /workspace/physicalai/.venv \
 		-v $(shell pwd)/datasets:/root/.cache/huggingface/lerobot \
 		-v /home/glows/.Xauthority:/root/.Xauthority:ro \
 		-v /tmp/.X11-unix:/tmp/.X11-unix:rw \
@@ -188,7 +188,7 @@ launch-isaaclab-glowsai-l40s: build-isaaclab
 			ls -l /usr/share/vulkan/icd.d /etc/vulkan/icd.d 2>/dev/null || true; \
 			$(select_vulkan_icd); \
 			$(require_runtime_libs); \
-			cd /workspace/aicapstone; \
+			cd /workspace/physicalai; \
 			/bin/bash || true; \
 			echo "== restoring host ownership of $(OWNED_DIRS) =="; \
 			$(restore_ownership); \

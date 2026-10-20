@@ -17,8 +17,8 @@ from data_verification.spec_template import template_text
 ROOT = Path(__file__).resolve().parents[1]
 
 SPEC = """
-@prefix dv:   <urn:aicapstone:dv#> .
-@prefix spec: <urn:aicapstone:spec:test#> .
+@prefix dv:   <urn:physicalai:dv#> .
+@prefix spec: <urn:physicalai:spec:test#> .
 
 spec:cube a dv:TaskObject ; dv:objectName "cube" .
 spec:cube_coverage a dv:CoverageRequirement ;

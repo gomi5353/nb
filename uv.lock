@@ -16,8 +16,8 @@ resolution-markers = [
 
 [manifest]
 members = [
-    "aicapstone",
     "data-verification",
+    "physicalai",
 ]
 
 [[package]]
@@ -38,30 +38,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/ca/14/787e5498cd062640f
 wheels = [
     { url = "https://files.pythonhosted.org/packages/7e/46/02ac5e262d4af18054b3e922b2baedbb2a03289ee792162de60a865defc5/accelerate-1.13.0-py3-none-any.whl", hash = "sha256:cf1a3efb96c18f7b152eb0fa7490f3710b19c3f395699358f08decca2b8b62e0", size = 383744, upload-time = "2026-03-04T19:34:10.313Z" },
 ]
-
-[[package]]
-name = "aicapstone"
-version = "0.1.0"
-source = { virtual = "." }
-dependencies = [
-    { name = "data-verification" },
-    { name = "lerobot" },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "pytest" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "data-verification", editable = "packages/data_verification" },
-    { name = "lerobot", specifier = "==0.4.4" },
-    { name = "pytest", marker = "extra == 'dev'" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.12.11" },
-]
-provides-extras = ["dev"]
 
 [[package]]
 name = "aiohappyeyeballs"
@@ -1306,6 +1282,30 @@ sdist = { url = "https://files.pythonhosted.org/packages/d9/5a/32b50c077c86bfccc
 wheels = [
     { url = "https://files.pythonhosted.org/packages/8c/d7/8ff98376b1acc4503253b685ea09981697385ce344d4e3935c2af49e044d/pfzy-0.3.4-py3-none-any.whl", hash = "sha256:5f50d5b2b3207fa72e7ec0ef08372ef652685470974a107d0d4999fc5a903a96", size = 8537, upload-time = "2022-01-28T02:26:16.047Z" },
 ]
+
+[[package]]
+name = "physicalai"
+version = "0.1.0"
+source = { virtual = "." }
+dependencies = [
+    { name = "data-verification" },
+    { name = "lerobot" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "data-verification", editable = "packages/data_verification" },
+    { name = "lerobot", specifier = "==0.4.4" },
+    { name = "pytest", marker = "extra == 'dev'" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.12.11" },
+]
+provides-extras = ["dev"]
 
 [[package]]
 name = "pillow"

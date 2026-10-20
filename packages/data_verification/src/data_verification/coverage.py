@@ -254,7 +254,7 @@ def format_report(report: CoverageReport, max_nodes: int = 3) -> str:
 
 
 def _short_node(uri: str) -> str:
-    """'urn:aicapstone:data:ds/episode/3/placement/cup' -> 'episode/3/placement/cup'."""
-    if uri.startswith("urn:aicapstone:data:"):
+    """'urn:physicalai:data:ds/episode/3/placement/cup' -> 'episode/3/placement/cup'."""
+    if uri.startswith("urn:physicalai:data:"):
         return uri.split("/", 1)[-1]
     return uri.rsplit("#", 1)[-1]
