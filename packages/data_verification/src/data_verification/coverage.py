@@ -157,10 +157,20 @@ def build_verification_graph(dataset_root: str | Path, spec: str | Path) -> tupl
 
 
 def verify_object_pose_coverage(
-    dataset_root: str | Path, spec: str | Path, extra_shapes: list[str | Path] | None = None
+    dataset_root: str | Path,
+    spec: str | Path,
+    extra_shapes: list[str | Path] | None = None,
+    graph_out: str | Path | None = None,
 ) -> CoverageReport:
-    """Check ``dataset_root`` against ``spec``; ``extra_shapes`` adds your own SHACL rules."""
+    """Check ``dataset_root`` against ``spec``; ``extra_shapes`` adds your own SHACL rules.
+
+    ``graph_out`` also writes the data graph that SHACL validates (spec, generated
+    cells, episodes, initial placements) as Turtle, for inspection or SPARQL.
+    """
     graph, report = build_verification_graph(dataset_root, spec)
+    if graph_out is not None:  # also when empty, so an old file never looks current
+        Path(graph_out).parent.mkdir(parents=True, exist_ok=True)
+        graph.serialize(destination=Path(graph_out), format="turtle")
     if len(graph) == 0 or todo_fields(graph) or value_type_errors(graph):
         return report  # spec missing or not filled in; SHACL would only add noise
 

@@ -228,6 +228,7 @@ How to read it:
 | Option | Effect |
 |---|---|
 | `--json report.json` | Full report (counts per cell, all findings) as JSON, for your own plots or scripts |
+| `--no-graph-out` | Do not write the RDF graph that SHACL validates. By default `check` writes it (your spec, the generated cells, every episode and initial placement) to `outputs/object_pose_coverage/<dataset>.ttl`, to inspect or query with SPARQL |
 | `--strict` | Treat warnings as failures |
 | `--extra-shapes my_rules.ttl` | Also run your own SHACL rules (section 7); repeatable |
 
