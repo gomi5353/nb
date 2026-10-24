@@ -22,12 +22,20 @@ checking the resulting dataset.
 
 ## 0. Choose the collection design
 
+In this guide, **controller** means your *data-collection controller*: the
+code that decides the 8-D action to send at each `env.step()` while you record
+demonstrations (a scripted state machine, keyboard teleoperation, a motion
+planner, ...). It plays the expert that the policy will imitate. It is not the
+robot's low-level joint controller (Isaac Lab's PD actuators, stiffness 80 and
+damping 4, which you don't change), and not the IK solver you may call inside
+it ([section 3](#3-what-your-controller-must-output)).
+
 For one of the HCIS tasks, the recommended workflow is:
 
 1. Read the task configuration and identify its scene objects, cameras,
    action space, and success predicate.
-2. Implement a controller/state machine and a recording loop in your own
-   collection script.
+2. Implement a controller (for example a scripted state machine) and a
+   recording loop in your own collection script.
 3. Connect the loop to the repository's `LeRobotRecorderManager` and record
    one test episode.
 4. Check that the test episode has the `object_pose.*` columns and passes the
@@ -319,6 +327,10 @@ class HandPoseToJoints:
         return self.ik.compute(hand_pos_b, hand_quat_b, jacobian_b, data.joint_pos[:, self.arm_ids])
 ```
 
+`HandPoseToJoints` is an IK solver that you call from inside your controller.
+Isaac Lab names its solver class `DifferentialIKController`, but it is not the
+controller this guide talks about.
+
 Tips:
 
 - Quaternions in Isaac Lab are `(w, x, y, z)`.
@@ -528,7 +540,7 @@ session cannot damage existing episodes.
 | `FileExistsError` right at start | The dataset folder already exists | Pick a new `repo_id`, delete the old folder, or [resume](#7-recording-over-several-sessions) |
 | Recorder rejects the export mode | `env_cfg.recorders.dataset_export_mode` was not set before the recorder was created | Set it to `EXPORT_SUCCEEDED_ONLY` (or the resume variant) before creating the recorder |
 | Dataset won't load / parquet footer error | `finalize()` never ran (crash, `kill -9`, closed terminal) | Keep `finalize()` in `finally`; stop with Ctrl+C |
-| Every attempt is reported as failed | `check_success(env)` is `False` or the state machine ends too early | Print the object poses and compare the predicate with the task config in section 1 |
+| Every attempt is reported as failed | `check_success(env)` is `False` or the controller ends the attempt too early | Print the object poses and compare the predicate with the task config in section 1 |
 | Error or empty episode right after a saved one | The next episode was not reset or the success state was not cleared | After every `env.reset()`, set the success term back to `False` (`set_success(env, False)` in [section 2.1](#21-use-the-repositorys-lerobotrecordermanager)) |
 | First frames show the previous episode's scene | Controller moved during the skipped steps | Hold still for at least 5 steps after reset |
 | Camera errors / images missing | Started without `--enable_cameras` | Add the flag |
