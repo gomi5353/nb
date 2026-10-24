@@ -10,6 +10,9 @@ key and every ``action*`` key into a policy input/output
 ignored by policies. These columns are therefore safe for training and rollout,
 and are read back by ``packages/data_verification``.
 
+Record with ``LeRobotRecorderManager`` from this module, not leisaac's original
+class, which writes no object poses.
+
 Keep ``OBJECT_POSE_KEY_PREFIX`` / ``OBJECT_POSE_NAMES`` in sync with
 ``data_verification.dataset``.
 """
@@ -22,7 +25,6 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 if TYPE_CHECKING:
-    from isaaclab.envs import ManagerBasedEnv
     from isaaclab.utils.datasets.episode_data import EpisodeData
 
 OBJECT_POSE_KEY_PREFIX = "object_pose."
@@ -39,20 +41,6 @@ def object_pose_features(object_names: list[str]) -> dict[str, dict]:
         }
         for name in object_names
     }
-
-
-def read_object_poses(env: ManagerBasedEnv, object_names: list[str], env_index: int = 0) -> dict[str, np.ndarray]:
-    """Current env-local object poses, keyed by dataset column.
-
-    For custom recording pipelines: call once per recorded frame and merge the
-    result into the frame dict passed to ``LeRobotDataset.add_frame``.
-    """
-    frame = {}
-    for name in object_names:
-        root_pose = env.scene[name].data.root_pose_w[env_index].clone()
-        root_pose[:3] -= env.scene.env_origins[env_index]
-        frame[f"{OBJECT_POSE_KEY_PREFIX}{name}"] = root_pose.cpu().numpy().astype(np.float32)
-    return frame
 
 
 def object_poses_from_episode(episode_data: EpisodeData, dataset_features: dict) -> dict[str, np.ndarray]:
@@ -82,15 +70,21 @@ def _make_recorder_manager_class():
         leisaac builds the dataset features inside ``__init__`` with no
         extension hook, so the feature builder is wrapped for the duration of
         the base constructor only. Tracked objects come from
-        ``env.cfg.tracked_object_names``.
+        ``env.cfg.tracked_object_names``, which must not be empty.
         """
 
         def __init__(self, cfg, dataset_cfg, env):
+            object_names = list(getattr(env.cfg, "tracked_object_names", []))
+            if not object_names:
+                raise ValueError(
+                    f"{type(env.cfg).__name__}.tracked_object_names is empty: no object poses would be recorded "
+                    "and the dataset could not be verified. List the task's rigid objects there."
+                )
             base_build = leisaac_recorder.build_feature_from_env
 
             def build_with_object_poses(env, dataset_cfg):
                 features = base_build(env, dataset_cfg)
-                features.update(object_pose_features(list(getattr(env.cfg, "tracked_object_names", []))))
+                features.update(object_pose_features(object_names))
                 return features
 
             leisaac_recorder.build_feature_from_env = build_with_object_poses

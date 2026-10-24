@@ -104,10 +104,12 @@ step run **inside the container**, from the repository root. The container is a 
 ### Write your collection script and record
 
 You write the collection entry point for your task: a controller (a scripted state machine,
-keyboard teleoperation, or another input source) connected to the simulator and to a LeRobot
-dataset writer. [How to Record Episodes](how_to_record.md) explains the recorder, the action format,
-a controller skeleton, and how to check the result. Decide yourself how many episodes you need and
-which object positions they must cover.
+keyboard teleoperation, or another input source) connected to the simulator and to the repository's
+`LeRobotRecorderManager` (`simulator.utils.object_pose_recording`). Don't use leisaac's original
+recorder: the repository's version also records every object's pose, which you need for data
+verification in Step 4. [How to Record Episodes](how_to_record.md) explains the recorder, the action
+format, a controller skeleton, and how to check the result. Decide yourself how many episodes you need
+and which object positions they must cover.
 
 Tasks:
 

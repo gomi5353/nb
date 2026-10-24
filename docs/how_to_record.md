@@ -1,16 +1,18 @@
 # How to Record Episodes
 
 This guide shows you how to turn your controller into a pipeline that writes a
-LeRobot v3 dataset. The main path uses a LeRobot recorder connected to the
-Isaac Lab environment and saves each successful attempt as one dataset episode.
-[Section 8](#8-advanced-option-write-the-dataset-yourself) shows a
-second way, where you write the dataset yourself with LeRobot's
-`LeRobotDataset` API.
+LeRobot v3 dataset. You record with the repository's `LeRobotRecorderManager`
+([section 2.1](#21-use-the-repositorys-lerobotrecordermanager)), which is
+connected to the Isaac Lab environment and saves each successful attempt as
+one dataset episode. It also records the pose of every task object, which the
+[data verification](object_pose_coverage.md) step reads. A dataset without
+those columns can't be verified, so this recorder is the only supported way
+to record.
 
 Students are expected to implement the collection entry point for their task.
 The entry point may use a scripted controller, keyboard teleoperation, or
 another input source, but it must connect that controller to the simulator and
-the LeRobot writer. Use this guide when designing the collection behaviour and
+the repository's LeRobot recorder. Use this guide when designing the collection behaviour and
 checking the resulting dataset.
 
 > **Run on:** a Linux machine with an NVIDIA GPU, inside the Isaac Lab
@@ -26,11 +28,14 @@ For one of the HCIS tasks, the recommended workflow is:
    action space, and success predicate.
 2. Implement a controller/state machine and a recording loop in your own
    collection script.
-3. Connect the loop to a LeRobot v3 writer and record one test episode.
+3. Connect the loop to the repository's `LeRobotRecorderManager` and record
+   one test episode.
+4. Check that the test episode has the `object_pose.*` columns and passes the
+   [object-pose coverage](object_pose_coverage.md) `init` step before you
+   collect the full set.
 
 Use keyboard teleoperation when the demonstration should be driven by a
-person. A custom recorder is appropriate when the required episode logic or
-metadata is not provided by your base template.
+person.
 
 ## 1. Know your task
 
@@ -136,8 +141,13 @@ which the [object-pose coverage check](object_pose_coverage.md) needs:
 
 The `object_pose.` prefix is ignored by LeRobot policies. Only `observation.*`
 and `action*` keys become policy inputs and outputs, so these columns do not
-affect training or rollout. If you use leisaac's original class, recording
-still works, but the columns are missing and the coverage check can't run.
+affect training or rollout.
+
+**Don't use leisaac's original class.** It records the same robot data but
+none of the object poses, so you can't check what your dataset covers.
+Data verification is part of the course: a dataset recorded without the
+`object_pose.*` columns has to be recorded again. The repository recorder
+raises an error at construction if the task has no `tracked_object_names`.
 
 The object poses come from the `states` buffer that Isaac Lab's
 `ActionStateRecorderManagerCfg` writes. That config is the task default
@@ -237,11 +247,11 @@ The recorder builds the dataset features from the environment. It uses
 | `observation.images.front` | 480×640×3 video | Front camera |
 | `observation.images.wrist` | 480×640×3 video | Wrist camera |
 | `task` → `task_index` | string | `env_cfg.task_description` |
-| `object_pose.<name>` | `(7,)` float32, names `x, y, z, qw, qx, qy, qz` | Pose of each `tracked_object_names` object, relative to the env origin. Only written by the repository recorder ([section 2.1](#21-use-the-repositorys-lerobotrecordermanager)) |
+| `object_pose.<name>` | `(7,)` float32, names `x, y, z, qw, qx, qy, qz` | Pose of each `tracked_object_names` object, relative to the env origin ([section 2.1](#21-use-the-repositorys-lerobotrecordermanager)) |
 
 These features match the simulator-side LeRobot frame builder in
 [`single_arm_franka_cfg.py`](../packages/simulator/src/simulator/tasks/template/single_arm_franka_cfg.py).
-The object-pose coverage checker needs the `object_pose.<name>` columns. See
+The object-pose coverage check needs the `object_pose.<name>` columns. See
 [`object_pose_coverage.md`](object_pose_coverage.md) for how it uses them.
 Don't add cameras to the scene, change the image size, or change the action
 space unless you also update the dataset contract and downstream training
@@ -413,8 +423,9 @@ Good habits for scripted demonstrations:
 For keyboard teleoperation, implement an input adapter that converts keyboard
 events into the same `(num_envs, 8)` action tensor used by the scripted
 controller. Document the key bindings in your own collection entry point.
-Keep input handling, episode status, and dataset writing as separate parts so
-the same recorder can be used with a scripted controller.
+Keep input handling and episode status separate from the recorder, so the same
+recording loop ([section 2.1](#21-use-the-repositorys-lerobotrecordermanager))
+works with a scripted controller.
 
 Keyboard teleoperation needs the GUI (don't pass `--headless`) and a real-time
 rate limiter. Without a rate limiter, the simulation runs as fast as it can and
@@ -422,8 +433,7 @@ the arm moves too fast to control.
 
 Do not step the simulation while waiting for the operator to start. Begin
 recording after the scene is stable, and discard practice or calibration
-motion. If object-pose coverage is required, add the `object_pose.*` features
-to the same frame before writing it.
+motion.
 
 ## 5. Run it
 
@@ -468,88 +478,14 @@ Two things to know:
 
 ## 7. Recording over several sessions
 
-To add episodes to a dataset finalized earlier, configure the writer in
-resume/append mode instead of create mode. Use the same dataset id, feature
-definitions, image size, and FPS as the first session. Only resume a finalized
-dataset; copy the folder first so a failed session cannot damage existing
-episodes. If the writer does not support resume, create a new dataset and keep
-the sessions separate.
+To add episodes to a dataset finalized earlier, set the export mode to
+`EnhanceDatasetExportMode.EXPORT_SUCCEEDED_ONLY_RESUME` (the `args.resume`
+branch in [section 2.1](#21-use-the-repositorys-lerobotrecordermanager)).
+Use the same task, dataset id, `tracked_object_names`, and FPS as the first
+session. Only resume a finalized dataset; copy the folder first so a failed
+session cannot damage existing episodes.
 
-## 8. Advanced option: write the dataset yourself
-
-Instead of the recorder manager, you can call LeRobot directly. You write more
-code, but you control everything: which frames are kept, when, and why. There
-is no hidden 5-frame skip and no success term to manage.
-
-```python
-from lerobot.datasets.lerobot_dataset import LeRobotDataset
-from simulator import FRANKA_JOINT_NAMES
-from simulator.utils.object_pose_recording import object_pose_features, read_object_poses
-
-IMAGE = {"dtype": "video", "shape": (480, 640, 3), "names": ["height", "width", "channels"]}
-OBJECTS = ["blue_cup", "pink_cup"]  # use the names from the selected task config
-FEATURES = {  # base features produced by the repository recorder
-    "observation.state": {"dtype": "float32", "shape": (9,), "names": [f"{j}.pos" for j in FRANKA_JOINT_NAMES]},
-    "action": {"dtype": "float32", "shape": (8,), "names": [f"dim_{i}" for i in range(8)]},
-    "observation.images.front": IMAGE,
-    "observation.images.wrist": IMAGE,
-}
-FEATURES.update(object_pose_features(OBJECTS))
-
-env_cfg = parse_env_cfg(args.task, device=args.device, num_envs=1)
-env_cfg.use_joint_position_actions()  # same robot and action setup as rollout; required
-task_success = env_cfg.terminations.success
-env_cfg.terminations.success = None   # no automatic resets: you decide when an attempt ends
-env_cfg.terminations.time_out = None
-env_cfg.recorders = None              # no Isaac Lab recorder at all
-env = gym.make(args.task, cfg=env_cfg).unwrapped
-
-dataset = LeRobotDataset.create(
-    repo_id=args.repo_id, fps=60, robot_type="franka_panda", features=FEATURES
-)
-
-try:
-    with torch.inference_mode():
-        obs, _ = env.reset()
-        controller.reset(env)
-        step = 0
-        while dataset.num_episodes < args.num_episodes:
-            action = controller.act(env)
-            if action is None:  # e.g. teleop operator has not started yet
-                env.sim.render()
-                continue
-            step += 1
-            if step > 5:  # skip frames that may still show the pre-reset scene
-                policy_obs = obs["policy"]  # observation from BEFORE this action
-                dataset.add_frame({
-                    "observation.state": policy_obs["joint_pos"][0].cpu().numpy(),
-                    "observation.images.front": policy_obs["front"][0].cpu().numpy(),
-                    "observation.images.wrist": policy_obs["wrist"][0].cpu().numpy(),
-                    "action": action[0].cpu().numpy(),
-                    "task": env_cfg.task_description,
-                    **read_object_poses(env, OBJECTS),
-                })
-            obs, *_ = env.step(action)
-
-            if controller.finished or controller.gave_up or step >= args.max_steps:
-                if controller.finished and bool(task_success.func(env, **task_success.params)[0]):
-                    dataset.save_episode()
-                else:
-                    dataset.clear_episode_buffer()
-                obs, _ = env.reset()
-                controller.reset(env)
-                step = 0
-finally:
-    dataset.finalize()
-    env.close()
-    simulation_app.close()
-```
-
-The key rule: add the frame with the observation from **before** the action,
-then step. If you pair an observation with the action from a different step,
-the policy learns the wrong cause and effect.
-
-## 9. Check your dataset
+## 8. Check your dataset
 
 1. **Load it and look at the numbers:**
 
@@ -567,8 +503,7 @@ the policy learns the wrong cause and effect.
    done, both cameras show the right view, and the state curves move when the
    arm moves.
 
-3. **Check object-pose coverage** if your dataset was recorded with the
-   repository recorder:
+3. **Check object-pose coverage.** This step is required for every dataset:
 
    ```bash
    uv run python scripts/verify_object_pose_coverage.py init \
@@ -586,23 +521,24 @@ the policy learns the wrong cause and effect.
    report. This check is a coverage diagnostic; it does not replace visual
    inspection or LeRobot loading.
 
-## 10. Troubleshooting
+## 9. Troubleshooting
 
 | Symptom | Cause | Fix |
 |---|---|---|
 | `FileExistsError` right at start | The dataset folder already exists | Pick a new `repo_id`, delete the old folder, or [resume](#7-recording-over-several-sessions) |
-| Recorder rejects the export mode | The writer was constructed before its successful-only/resume mode was configured | Set the writer mode before creating the recorder |
+| Recorder rejects the export mode | `env_cfg.recorders.dataset_export_mode` was not set before the recorder was created | Set it to `EXPORT_SUCCEEDED_ONLY` (or the resume variant) before creating the recorder |
 | Dataset won't load / parquet footer error | `finalize()` never ran (crash, `kill -9`, closed terminal) | Keep `finalize()` in `finally`; stop with Ctrl+C |
 | Every attempt is reported as failed | `check_success(env)` is `False` or the state machine ends too early | Print the object poses and compare the predicate with the task config in section 1 |
 | Error or empty episode right after a saved one | The next episode was not reset or the success state was not cleared | After every `env.reset()`, set the success term back to `False` (`set_success(env, False)` in [section 2.1](#21-use-the-repositorys-lerobotrecordermanager)) |
 | First frames show the previous episode's scene | Controller moved during the skipped steps | Hold still for at least 5 steps after reset |
 | Camera errors / images missing | Started without `--enable_cameras` | Add the flag |
-| Missing `object_pose.*` features | leisaac's `LeRobotRecorderManager` was imported instead of the repository's, or `tracked_object_names` is empty | Import from `simulator.utils.object_pose_recording` ([section 2.1](#21-use-the-repositorys-lerobotrecordermanager)) and check the task config |
+| Missing `object_pose.*` features | leisaac's `LeRobotRecorderManager` was imported instead of the repository's | Import from `simulator.utils.object_pose_recording` ([section 2.1](#21-use-the-repositorys-lerobotrecordermanager)) and record again |
+| `ValueError: ... tracked_object_names is empty` | Your task cfg tracks no objects | Set `tracked_object_names` to the task's rigid objects |
 | `KeyError: '<object name>'` on the first recorded frame | `env_cfg.recorders` was replaced, so the `states` buffer is missing | Keep the default `ActionStateRecorderManagerCfg` and change only its export mode |
-| Dataset cannot be opened after an interrupted run | The writer was not finalized | Stop with Ctrl+C when possible, resume only a finalized dataset, and use a new repo id for a corrupted one |
+| Dataset cannot be opened after an interrupted run | `finalize()` did not run | Stop with Ctrl+C when possible, resume only a finalized dataset, and use a new repo id for a corrupted one |
 | Keyboard does nothing | Running `--headless`, or your input adapter is still waiting for its start key | Run with the GUI and press the start key your script defines |
 
-## 11. Checklist
+## 10. Checklist
 
 - [ ] `num_envs=1`, `--enable_cameras`.
 - [ ] Controller reads object poses fresh every episode.
@@ -613,4 +549,6 @@ the policy learns the wrong cause and effect.
 - [ ] `env_cfg.use_joint_position_actions()` is called before the env is created.
 - [ ] Dataset `fps` is 60 in every session.
 - [ ] `finalize()` runs at the end of every session.
-- [ ] The dataset loads in LeRobot and the object-pose coverage check passes when coverage is required.
+- [ ] The recorder is imported from `simulator.utils.object_pose_recording`, not from leisaac.
+- [ ] `meta/info.json` lists one `object_pose.<name>` feature per tracked object.
+- [ ] The dataset loads in LeRobot and you ran the object-pose coverage check on it.

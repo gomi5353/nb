@@ -1,9 +1,13 @@
 # Object Pose Coverage: Check Your Own Dataset
 
-At evaluation time your policy is run with objects starting at poses it has never seen. A policy usually handles only the starting poses it saw often enough in training. This tool shows you **where in the workspace your dataset actually has episodes**, measured against a requirement **you** write.
+---
 
-- It is a **self-check**, not part of grading. We evaluate your trained policy, not your dataset. You decide the region, the resolution and how many episodes are enough.
-- It follows the **Object Pose (POSE)** axis of STAR-Gen, [A Taxonomy for Evaluating Generalist Robot Manipulation Policies](https://stargen-taxonomy.github.io/): same task, same objects, different object poses.
+## Overview
+
+ This tool shows you **where in the workspace your dataset actually has episodes**, measured against a requirement **you** write.
+
+- It is a **required step** of your workflow. You decide the region, the resolution and how many episodes are enough.
+- It needs the `object_pose.*` columns, which only the repository's `LeRobotRecorderManager` writes ([section 2](#2-record-object-poses)). Record every dataset with it.
 
 Contents:
 
@@ -17,6 +21,12 @@ Contents:
 
 ---
 
+## Why Object Pose Coverage Verification Matters
+
+Coverage data verification is important because imitation learning policies tend to perform well only in situations that are sufficiently represented in their training data. If the evaluation environment contains object poses that are missing or underrepresented in the demonstrations, the policy may fail due to insufficient data coverage rather than limitations of the model itself. Verifying data coverage helps identify these gaps early, allowing researchers to determine whether additional data collection is necessary before investing time and computational resources in training. Object pose is selected as a coverage factor because it is the primary variable that changes between episodes, while the scene, robot, cameras, and task generally remain unchanged. Since object initial poses are randomized during environment resets, they are a likely source of differences between training and evaluation scenarios. Furthermore, object poses can be obtained directly from the simulator without additional labeling or estimation, making them straightforward to measure and verify. By analyzing the distribution of initial object positions and comparing it against predefined coverage requirements, underrepresented regions in the dataset can be identified. Therefore, object pose serves as a practical and intuitive starting point for demonstrating the coverage verification process, which can later be extended to other factors, such as lighting conditions.
+
+---
+
 ## 1. Workflow
 
 ```
@@ -27,7 +37,7 @@ record episodes ──▶ init spec ──▶ fill in TODOs ──▶ check ─�
 
 | Step | Where it runs | Command / code |
 |---|---|---|
-| Record, with object poses | Isaac Sim container | your pipeline + section 2 |
+| Record, with object poses | Isaac Sim container | your collection script + the repository recorder (section 2) |
 | Create a spec skeleton | host (`uv` env) | `verify_object_pose_coverage.py init` |
 | Fill in the requirement | any editor | section 3 |
 | Check | host (`uv` env) | `verify_object_pose_coverage.py check` |
@@ -61,46 +71,26 @@ Which objects are recorded is set by `tracked_object_names` in the env cfg:
 
 Change the list on your env cfg (`env_cfg.tracked_object_names = [...]`) if you want other rigid objects recorded.
 
-### 2.2 Option A: leisaac's LeRobot recorder
+### 2.2 The repository's LeRobot recorder
 
-Replace the leisaac import with the one from `simulator`. It behaves the same and also declares and writes the `object_pose.*` columns:
+Record with the `LeRobotRecorderManager` from `simulator`, **not** the one from leisaac. It handles episodes the same way and also declares and writes the `object_pose.*` columns:
 
 ```python
-# from leisaac.enhance.managers.lerobot_recorder_manager import LeRobotRecorderManager
+# from leisaac.enhance.managers.lerobot_recorder_manager import LeRobotRecorderManager  # not this
 from simulator.utils.object_pose_recording import LeRobotRecorderManager
 
 env.recorder_manager = LeRobotRecorderManager(env_cfg.recorders, dataset_cfg, env)
 ```
 
+The full recording loop is in [How to Record Episodes, section 2.1](how_to_record.md#21-use-the-repositorys-lerobotrecordermanager). The recorder raises a `ValueError` if `tracked_object_names` is empty.
+
 Things to know about this recorder (they come from leisaac, not from the coverage tool):
 
-- It only accepts `DatasetExportMode.EXPORT_SUCCEEDED_ONLY` and **discards episodes whose `success` term was false**. If you also want failed episodes in your dataset, write frames yourself (option B).
+- It only accepts `DatasetExportMode.EXPORT_SUCCEEDED_ONLY` (or its resume variant) and **discards episodes whose `success` term was false**.
 - It drops the first 5 steps of every episode, so frame 0 is about step 6. Objects spawned slightly above the table may have dropped onto it by then; in our test they shifted by a few millimetres sideways. That is fine for coverage.
 - The `object_pose.<name>` columns come from the scene state *after* the frame's `env.step()`, while `observation.state` and the images are from *before* it. So the object pose in frame t is one simulation step (1/60 s) later than the observation. Objects at rest don't move in that time, so the first frame's pose is still the episode's start pose.
 
-### 2.3 Option B: your own frame writer
-
-```python
-from lerobot.datasets.lerobot_dataset import LeRobotDataset
-from simulator.utils.object_pose_recording import object_pose_features, read_object_poses
-
-names = env.cfg.tracked_object_names
-dataset = LeRobotDataset.create(
-    repo_id=...,
-    fps=60,  # one frame per env.step(); see how_to_record.md section 6
-    robot_type="franka_panda",
-    features={**your_features, **object_pose_features(names)},
-)
-
-# each recorded frame, read at the same moment as the frame's observation:
-frame = {...}                                  # your observation.state, images, action, task
-frame.update(read_object_poses(env, names))    # adds object_pose.<name> for env 0
-dataset.add_frame(frame)
-```
-
-`read_object_poses(env, names, env_index=i)` reads another env when you record from several parallel envs.
-
-### 2.4 Quick self-test
+### 2.3 Quick self-test
 
 After recording a few episodes:
 
@@ -108,7 +98,7 @@ After recording a few episodes:
 uv run python -c "import json; f=json.load(open('datasets/<repo_id>/meta/info.json'))['features']; print([k for k in f if k.startswith('object_pose.')])"
 ```
 
-You should see one key per tracked object.
+You should see one key per tracked object. If the list is empty, the dataset was recorded with leisaac's recorder: fix the import and record again.
 
 ---
 
@@ -240,15 +230,15 @@ Exit code: `0` = spec met, `1` = not met or error. Use it in your own scripts, e
 
 | Message | Cause | Fix |
 |---|---|---|
-| `meta/info.json declares no 'object_pose.<name>' features` | Dataset recorded without object poses | Section 2; re-record |
+| `meta/info.json declares no 'object_pose.<name>' features` | Dataset recorded with leisaac's recorder instead of the repository's | Section 2.2; re-record |
 | `Dataset has no 'object_pose.<name>' column, which the spec requires` | Spec block for an object that was not recorded, or a typo in `dv:objectName` | Fix the name, delete the block, or add the object to `tracked_object_names` |
 | `Spec still has TODO values: ...` | Unfilled fields | Fill them in (section 3.2) |
 | `... must be a number without quotes, got "8.8"` | Quoted number | Write `8.8`, not `"8.8"` |
 | `... must be a whole number without quotes, got 2.5` | Fraction in `gridX`/`gridY`/`minEpisodesPerCell` | Use a whole number |
 | `Spec is not valid Turtle: ...` | Syntax error, usually a missing `;` or `.` | Compare with the template: `;` between fields of one block, `.` at the end of a block |
 | `Coverage region is empty` | `xMin >= xMax` or `yMin >= yMax` | Swap the values |
-| `episode(s) do not start at frame_index 0` | Your writer's frame numbering starts later | Start `frame_index` at 0 for every episode |
-| `non-finite initial pose` | NaN/inf written as a pose | Check where `read_object_poses` is called |
+| `episode(s) do not start at frame_index 0` | Dataset edited or written by another tool | Record with the repository recorder (section 2.2) |
+| `non-finite initial pose` | NaN/inf written as a pose (an object exploded or fell out of the scene) | Watch that episode; drop it or fix the reset |
 | Everything lands in one cell | Objects never moved between episodes | Randomize object poses on reset in your pipeline |
 
 ---

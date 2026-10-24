@@ -44,7 +44,7 @@ Two equivalent forms:
 | Episode picker | `episode_index` | Episode count matches expectation; per-episode length looks sane |
 | Frame scrubber | `frame_index` / `timestamp` | Total frames ≈ `fps × episode_seconds` (60 fps: one frame per simulation step; each camera image repeats on two consecutive frames) |
 
-The Space reads features from the dataset's `meta/info.json`, so anything the recorder did not declare there will not appear. If a camera is missing from the video panel, check `LeRobotDatasetCfg.features` wiring in `leisaac.enhance.datasets.lerobot_dataset_handler`.
+The Space reads features from the dataset's `meta/info.json`, so anything the recorder did not declare there will not appear. If a camera is missing from the video panel, check that the scene declares it and that you recorded with the repository's `LeRobotRecorderManager` ([How to Record Episodes](how_to_record.md#21-use-the-repositorys-lerobotrecordermanager)). The `object_pose.*` columns are not shown here; check them with [Object Pose Coverage](object_pose_coverage.md).
 
 ## Common issues
 

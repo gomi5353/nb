@@ -11,5 +11,5 @@ Contents:
 - `src/simulator/tasks/toy_blocks_collection/` — `HCIS-ToyBlocksCollection-SingleArm-v0`
 - `src/simulator/tasks/external.py` — resolves `--task` given as a gym id, a `.py` file, or `module:Class`
 - `src/simulator/utils/domain_randomization.py` — reset events for object poses and lighting
-- `src/simulator/utils/object_pose_recording.py` — LeRobot recorder that also writes `object_pose.<name>` columns
+- `src/simulator/utils/object_pose_recording.py` — the LeRobot recorder to record with (leisaac's plus `object_pose.<name>` columns for data verification)
 - `assets/` — scene and object USDs

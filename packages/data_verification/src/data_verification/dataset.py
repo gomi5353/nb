@@ -59,7 +59,7 @@ def read_initial_placements(dataset_root: str | Path) -> DatasetPlacements:
     if not pose_keys:
         raise DatasetError(
             f"meta/info.json declares no '{OBJECT_POSE_KEY_PREFIX}<name>' features; "
-            "record object poses (see simulator.utils.object_pose_recording)"
+            "record with simulator.utils.object_pose_recording.LeRobotRecorderManager, not leisaac's recorder"
         )
     for key in pose_keys:
         shape = list(features[key].get("shape", []))

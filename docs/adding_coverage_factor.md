@@ -79,30 +79,29 @@ factor that was never recorded in the dataset.
 
 ## 4. Record the factor in LeRobot v3
 
-Declare the feature when creating the dataset:
+Extend the repository's `LeRobotRecorderManager` in
+[`object_pose_recording.py`](../packages/simulator/src/simulator/utils/object_pose_recording.py)
+the same way it adds the `object_pose.*` columns. Keep recording with that
+class so the object poses stay in the dataset next to your new factor.
 
-```python
-features["factor.light_intensity"] = {
-    "dtype": "float32",
-    "shape": (1,),
-    "names": ["lux"],
-}
-```
+1. Declare the feature in the recorder's feature dictionary
+   (`build_with_object_poses`):
 
-Write it with every frame:
+   ```python
+   features["factor.light_intensity"] = {
+       "dtype": "float32",
+       "shape": (1,),
+       "names": ["lux"],
+   }
+   ```
 
-```python
-frame["factor.light_intensity"] = np.asarray([light_lux], dtype=np.float32)
-dataset.add_frame(frame)
-```
-
-When using the repository's LeIsaac recorder, follow
-[`object_pose_recording.py`](../packages/simulator/src/simulator/utils/object_pose_recording.py):
-
-1. Add the feature to the recorder's feature dictionary.
 2. Read the value from the environment.
 3. Add it in `build_lerobot_frame()` at the same simulation step as the other
-   frame values.
+   frame values:
+
+   ```python
+   frame["factor.light_intensity"] = np.asarray([light_lux], dtype=np.float32)
+   ```
 
 Collect one short episode and inspect the raw output before touching RDF:
 

@@ -107,8 +107,11 @@ An action is seven absolute joint targets plus one gripper command (negative clo
     "observation.state":  <last joint_pos>,
     "task":               <self.task_description>,
     "observation.images.<camera>": <rgb frame>,    # one per camera in dataset_cfg
+    "object_pose.<name>":  <[x, y, z, qw, qx, qy, qz]>,  # one per tracked_object_names entry
 }
 ```
+
+The `object_pose.<name>` columns are declared only by the repository's `LeRobotRecorderManager` (`simulator.utils.object_pose_recording`). Record with that class, not leisaac's, and list your task's rigid objects in `tracked_object_names`; see [How to Record Episodes](how_to_record.md#21-use-the-repositorys-lerobotrecordermanager).
 
 The image keys are driven by `dataset_cfg.features` — keep `features` in sync with the cameras you declared in the scene, otherwise the recorder silently drops frames.
 
@@ -264,6 +267,7 @@ gym.register(
    - Subclass `SingleArmFrankaTaskSceneCfg`; override `scene` and add per-object `RigidObjectCfg` fields.
    - Subclass `SingleArmFrankaTerminationsCfg`; add a `success` `DoneTerm` with your own predicate (return shape `(num_envs,)`, subtract `env_origins`).
    - Subclass `SingleArmFrankaTaskEnvCfg`; in `__post_init__` set viewer pose, robot home pose, `task_description`, and call `parse_usd_and_create_subassets` if you reuse a packaged USD scene.
+   - Set `tracked_object_names` to the rigid objects whose poses must be recorded for data verification. The repository recorder refuses to start if it is empty.
    - Add reset events for object and light randomization (section 3.4).
 4. Register the task module under `simulator.tasks` (auto-discovered when the package is imported).
 5. Smoke test: run your collection script without recording (see
