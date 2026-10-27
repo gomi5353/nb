@@ -7,7 +7,7 @@ from importlib.resources import files
 from pathlib import Path
 
 from .dataset import DatasetPlacements
-from .graph import DV
+from .graph import CP
 
 BEGIN = "# --- BEGIN OBJECT ---\n"
 END = "# --- END OBJECT ---\n"
@@ -60,8 +60,8 @@ def todo_fields(graph) -> list[str]:
     fields = []
     for subject, predicate, value in graph:
         if str(value) == "TODO":
-            obj = graph.value(subject, DV.forObject)
-            name = graph.value(obj, DV.objectName) if obj is not None else None
+            obj = graph.value(subject, CP.forObject)
+            name = graph.value(obj, CP.objectName) if obj is not None else None
             fields.append(f"{name or subject}: {predicate.split('#')[-1]}")
     return sorted(fields)
 
@@ -76,11 +76,11 @@ def value_type_errors(graph) -> list[str]:
     from rdflib import RDF
 
     errors = []
-    for req in graph.subjects(RDF.type, DV.CoverageRequirement):
-        obj = graph.value(req, DV.forObject)
-        name = graph.value(obj, DV.objectName) if obj is not None else req
+    for req in graph.subjects(RDF.type, CP.CoverageRequirement):
+        obj = graph.value(req, CP.forObject)
+        name = graph.value(obj, CP.objectName) if obj is not None else req
         for field in _NUMBER_FIELDS + _WHOLE_NUMBER_FIELDS:
-            for value in graph.objects(req, DV[field]):
+            for value in graph.objects(req, CP[field]):
                 python_value = value.toPython()
                 whole = field in _WHOLE_NUMBER_FIELDS
                 ok = isinstance(python_value, int) if whole else isinstance(python_value, (int, float, Decimal))

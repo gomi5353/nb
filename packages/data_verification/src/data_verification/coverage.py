@@ -11,21 +11,21 @@ from pyshacl import validate
 from rdflib import RDF, Graph, Namespace
 
 from .dataset import DatasetError, read_initial_placements
-from .graph import DV, add_dataset, expand_cells
+from .graph import CP, add_dataset, expand_cells
 from .spec_template import todo_fields, value_type_errors
 
 SH = Namespace("http://www.w3.org/ns/shacl#")
 
-# Same membership rule as dv:CoverageCellShape, without the HAVING filter.
+# Same membership rule as cp:CoverageCellShape, without the HAVING filter.
 _CELL_COUNTS_QUERY = """
 SELECT ?name ?i ?j ?min (COUNT(DISTINCT ?p) AS ?n) WHERE {
-    ?cell a dv:CoverageCell ; dv:ofRequirement ?req ; dv:cellI ?i ; dv:cellJ ?j ;
-          dv:xMin ?x0 ; dv:xMax ?x1 ; dv:yMin ?y0 ; dv:yMax ?y1 ;
-          dv:xMaxInclusive ?xi ; dv:yMaxInclusive ?yi .
-    ?req dv:forObject ?obj ; dv:minEpisodesPerCell ?min .
-    ?obj dv:objectName ?name .
+    ?cell a cp:CoverageCell ; cp:ofRequirement ?req ; cp:cellI ?i ; cp:cellJ ?j ;
+          cp:xMin ?x0 ; cp:xMax ?x1 ; cp:yMin ?y0 ; cp:yMax ?y1 ;
+          cp:xMaxInclusive ?xi ; cp:yMaxInclusive ?yi .
+    ?req cp:forObject ?obj ; cp:minEpisodesPerCell ?min .
+    ?obj cp:objectName ?name .
     OPTIONAL {
-        ?p dv:ofObject ?obj ; dv:x ?x ; dv:y ?y .
+        ?p cp:ofObject ?obj ; cp:x ?x ; cp:y ?y .
         FILTER (?x >= ?x0 && (?x < ?x1 || (?xi && ?x = ?x1)) &&
                 ?y >= ?y0 && (?y < ?y1 || (?yi && ?y = ?y1)))
     }
@@ -35,10 +35,10 @@ GROUP BY ?name ?i ?j ?min
 
 _REQUIREMENTS_QUERY = """
 SELECT ?name ?x0 ?x1 ?y0 ?y1 ?nx ?ny ?min WHERE {
-    ?req a dv:CoverageRequirement ; dv:forObject ?obj ;
-         dv:xMin ?x0 ; dv:xMax ?x1 ; dv:yMin ?y0 ; dv:yMax ?y1 ;
-         dv:gridX ?nx ; dv:gridY ?ny ; dv:minEpisodesPerCell ?min .
-    ?obj dv:objectName ?name .
+    ?req a cp:CoverageRequirement ; cp:forObject ?obj ;
+         cp:xMin ?x0 ; cp:xMax ?x1 ; cp:yMin ?y0 ; cp:yMax ?y1 ;
+         cp:gridX ?nx ; cp:gridY ?ny ; cp:minEpisodesPerCell ?min .
+    ?obj cp:objectName ?name .
 }
 """
 
@@ -117,7 +117,7 @@ def build_verification_graph(dataset_root: str | Path, spec: str | Path) -> tupl
     except Exception as exc:  # rdflib raises several parser error types
         report.errors.append(f"Spec is not valid Turtle: {exc}")
         return graph, report
-    graph.bind("dv", DV)
+    graph.bind("cp", CP)
     todo = todo_fields(graph)
     if todo:
         report.errors.append("Spec still has TODO values: " + ", ".join(todo))
@@ -126,8 +126,8 @@ def build_verification_graph(dataset_root: str | Path, spec: str | Path) -> tupl
     if type_errors:
         report.errors.extend(type_errors)
         return graph, report
-    if not any(graph.subjects(RDF.type, DV.CoverageRequirement)):
-        report.errors.append("Spec declares no dv:CoverageRequirement; nothing to check")
+    if not any(graph.subjects(RDF.type, CP.CoverageRequirement)):
+        report.errors.append("Spec declares no cp:CoverageRequirement; nothing to check")
     expand_cells(graph)
 
     try:
@@ -139,7 +139,7 @@ def build_verification_graph(dataset_root: str | Path, spec: str | Path) -> tupl
     report.num_episodes = len(data.episode_indices)
     if not data.episode_indices:
         report.errors.append("Dataset contains no episodes")
-    required = {str(graph.value(obj, DV.objectName)) for obj in graph.objects(None, DV.forObject)}
+    required = {str(graph.value(obj, CP.objectName)) for obj in graph.objects(None, CP.forObject)}
     for name in sorted(required - set(data.object_names)):
         report.errors.append(f"Dataset has no 'object_pose.{name}' column, which the spec requires")
     bad = [p for p in data.placements if not p.is_finite]
@@ -206,10 +206,10 @@ def verify_object_pose_coverage(
 
 def _coverage_tables(graph: Graph) -> list[ObjectCoverage]:
     counts: dict[str, Counter] = {}
-    for row in graph.query(_CELL_COUNTS_QUERY, initNs={"dv": DV}):
+    for row in graph.query(_CELL_COUNTS_QUERY, initNs={"cp": CP}):
         counts.setdefault(str(row.name), Counter())[(int(row.i), int(row.j))] = int(row.n)
     tables = []
-    for row in graph.query(_REQUIREMENTS_QUERY, initNs={"dv": DV}):
+    for row in graph.query(_REQUIREMENTS_QUERY, initNs={"cp": CP}):
         name, nx, ny = str(row.name), int(row.nx), int(row.ny)
         cell_counts = counts.get(name, Counter())
         tables.append(
@@ -254,7 +254,7 @@ def format_report(report: CoverageReport, max_nodes: int = 3) -> str:
 
 
 def _short_node(uri: str) -> str:
-    """'urn:physicalai:data:ds/episode/3/placement/cup' -> 'episode/3/placement/cup'."""
-    if uri.startswith("urn:physicalai:data:"):
+    """'http://taica.course/cp/data/ds/episode/3/placement/cup' -> 'episode/3/placement/cup'."""
+    if uri.startswith("http://taica.course/cp/data/"):
         return uri.split("/", 1)[-1]
     return uri.rsplit("#", 1)[-1]

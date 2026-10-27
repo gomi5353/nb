@@ -17,16 +17,16 @@ from data_verification.spec_template import template_text
 ROOT = Path(__file__).resolve().parents[1]
 
 SPEC = """
-@prefix dv:   <urn:physicalai:dv#> .
-@prefix spec: <urn:physicalai:spec:test#> .
+@prefix cp:   <http://taica.course/cp/ontology#> .
+@prefix spec: <http://taica.course/cp/spec/test#> .
 
-spec:cube a dv:TaskObject ; dv:objectName "cube" .
-spec:cube_coverage a dv:CoverageRequirement ;
-    dv:targetsAxis dv:ObjectPoseAxis ;
-    dv:forObject spec:cube ;
-    dv:xMin 0.0 ; dv:xMax 0.2 ; dv:yMin 0.0 ; dv:yMax 0.2 ;
-    dv:gridX 2 ; dv:gridY 2 ;
-    dv:minEpisodesPerCell 1 .
+spec:cube a cp:TaskObject ; cp:objectName "cube" .
+spec:cube_coverage a cp:CoverageRequirement ;
+    cp:targetsAxis cp:ObjectPoseAxis ;
+    cp:forObject spec:cube ;
+    cp:xMin 0.0 ; cp:xMax 0.2 ; cp:yMin 0.0 ; cp:yMax 0.2 ;
+    cp:gridX 2 ; cp:gridY 2 ;
+    cp:minEpisodesPerCell 1 .
 """
 
 # One point per cell of the 2x2 grid over [0, 0.2]^2.
@@ -152,8 +152,8 @@ def _fill(spec_text: str, values: dict[str, str]) -> str:
 
 
 FILLED = {
-    "dv:xMin": "0.0", "dv:xMax": "0.2", "dv:yMin": "0.0", "dv:yMax": "0.2",
-    "dv:gridX": "2", "dv:gridY": "2", "dv:minEpisodesPerCell": "1",
+    "cp:xMin": "0.0", "cp:xMax": "0.2", "cp:yMin": "0.0", "cp:yMax": "0.2",
+    "cp:gridX": "2", "cp:gridY": "2", "cp:minEpisodesPerCell": "1",
 }
 
 
@@ -194,7 +194,7 @@ def test_init_refuses_to_overwrite(tmp_path: Path) -> None:
 
 def test_quoted_numbers_are_rejected(tmp_path: Path) -> None:
     spec = tmp_path / "spec.ttl"
-    spec.write_text(_fill(render_spec(["cube"]), {**FILLED, "dv:xMin": '"0.0"', "dv:gridX": "2.5"}))
+    spec.write_text(_fill(render_spec(["cube"]), {**FILLED, "cp:xMin": '"0.0"', "cp:gridX": "2.5"}))
     dataset = write_dataset(tmp_path / "ds", {0: {"cube": [(0.05, 0.05)]}})
     report = verify_object_pose_coverage(dataset, spec)
     assert report.errors == [
@@ -213,7 +213,7 @@ def test_invalid_turtle_is_reported(tmp_path: Path) -> None:
 
 def test_empty_region_is_reported(tmp_path: Path) -> None:
     spec = tmp_path / "spec.ttl"
-    spec.write_text(_fill(render_spec(["cube"]), {**FILLED, "dv:xMin": "0.3"}))
+    spec.write_text(_fill(render_spec(["cube"]), {**FILLED, "cp:xMin": "0.3"}))
     dataset = write_dataset(tmp_path / "ds", {0: {"cube": [(0.05, 0.05)]}})
     report = verify_object_pose_coverage(dataset, spec)
     assert any("Coverage region is empty" in v.message for v in report.violations)
@@ -235,7 +235,7 @@ def test_recorder_and_verifier_agree_on_column_format() -> None:
 
 def _doc_extra_shape_example() -> str:
     doc = (ROOT / "docs" / "object_pose_coverage.md").read_text()
-    return doc.split("```turtle\n@prefix dv:", 1)[1].split("```", 1)[0].join(["@prefix dv:", ""])
+    return doc.split("```turtle\n@prefix cp:", 1)[1].split("```", 1)[0].join(["@prefix cp:", ""])
 
 
 def test_extra_shapes_example_from_docs(tmp_path: Path, spec: Path) -> None:
@@ -246,19 +246,19 @@ def test_extra_shapes_example_from_docs(tmp_path: Path, spec: Path) -> None:
 
     rules.write_text(_doc_extra_shape_example().replace('"0.5"', '"1.0"'))
     report = verify_object_pose_coverage(dataset, spec, extra_shapes=[rules])
-    assert [(v.message, v.count) for v in report.violations] == [("dv:z: Object starts below the table", 4)]
+    assert [(v.message, v.count) for v in report.violations] == [("cp:z: Object starts below the table", 4)]
 
 
 def test_graph_out_writes_placements_and_cells(tmp_path: Path, spec: Path) -> None:
     from rdflib import RDF, Graph
 
-    from data_verification.graph import DV
+    from data_verification.graph import CP
 
     dataset = write_dataset(tmp_path / "ds", {i: {"cube": [xy]} for i, xy in enumerate(CELL_CENTERS)})
     out = tmp_path / "out" / "graph.ttl"
     report = verify_object_pose_coverage(dataset, spec, graph_out=out)
     assert report.passed, format_report(report)
     graph = Graph().parse(out, format="turtle")
-    assert len(list(graph.subjects(RDF.type, DV.Episode))) == 4
-    assert len(list(graph.subjects(RDF.type, DV.ObjectPlacement))) == 4
-    assert len(list(graph.subjects(RDF.type, DV.CoverageCell))) == 4
+    assert len(list(graph.subjects(RDF.type, CP.Episode))) == 4
+    assert len(list(graph.subjects(RDF.type, CP.ObjectPlacement))) == 4
+    assert len(list(graph.subjects(RDF.type, CP.CoverageCell))) == 4

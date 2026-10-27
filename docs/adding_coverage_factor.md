@@ -143,19 +143,19 @@ Create a clearly named ontology under
 `lighting.ttl`. A minimal vocabulary might be:
 
 ```turtle
-@prefix dv:   <urn:physicalai:dv#> .
+@prefix cp:   <http://taica.course/cp/ontology#> .
 @prefix owl:  <http://www.w3.org/2002/07/owl#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
 
-dv:LightingCondition a owl:Class .
-dv:hasLightingCondition a owl:ObjectProperty ;
-    rdfs:domain dv:Episode ;
-    rdfs:range dv:LightingCondition .
-dv:lightIntensityLux a owl:DatatypeProperty ;
-    rdfs:domain dv:LightingCondition ;
+cp:LightingCondition a owl:Class .
+cp:hasLightingCondition a owl:ObjectProperty ;
+    rdfs:domain cp:Episode ;
+    rdfs:range cp:LightingCondition .
+cp:lightIntensityLux a owl:DatatypeProperty ;
+    rdfs:domain cp:LightingCondition ;
     rdfs:range xsd:double .
-dv:LightingCoverageRequirement a owl:Class .
+cp:LightingCoverageRequirement a owl:Class .
 ```
 
 Use OWL to define concepts and relationships. Put executable constraints in
@@ -167,11 +167,11 @@ Follow [`graph.py`](../packages/data_verification/src/data_verification/graph.py
 Create one factor node for every episode, for example:
 
 ```turtle
-data:episode_7 a dv:Episode ;
-    dv:hasLightingCondition data:episode_7_lighting .
+data:episode_7 a cp:Episode ;
+    cp:hasLightingCondition data:episode_7_lighting .
 
-data:episode_7_lighting a dv:LightingCondition ;
-    dv:lightIntensityLux 612.0 .
+data:episode_7_lighting a cp:LightingCondition ;
+    cp:lightIntensityLux 612.0 .
 ```
 
 Keep extraction in Python and validation in RDF/SHACL. This lets you inspect the
@@ -183,14 +183,14 @@ Add a template under
 `packages/data_verification/src/data_verification/templates/`:
 
 ```turtle
-@prefix dv:   <urn:physicalai:dv#> .
-@prefix spec: <urn:physicalai:spec:lighting#> .
+@prefix cp:   <http://taica.course/cp/ontology#> .
+@prefix spec: <http://taica.course/cp/spec/lighting#> .
 
-spec:lighting a dv:LightingCoverageRequirement ;
-    dv:minLux 300.0 ;
-    dv:maxLux 900.0 ;
-    dv:numberOfBins 3 ;
-    dv:minEpisodesPerBin 5 .
+spec:lighting a cp:LightingCoverageRequirement ;
+    cp:minLux 300.0 ;
+    cp:maxLux 900.0 ;
+    cp:numberOfBins 3 ;
+    cp:minEpisodesPerBin 5 .
 ```
 
 Choose requirements from expected evaluation conditions, robot limitations, and

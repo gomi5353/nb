@@ -129,27 +129,27 @@ uv run python scripts/verify_object_pose_coverage.py init \
 
 ```turtle
 # Already in my_dataset: 40 episode(s), initial x 8.930..9.050, y 6.400..6.560. For reference only.
-spec:blue_cup a dv:TaskObject ;
-    dv:objectName "blue_cup" .
+spec:blue_cup a cp:TaskObject ;
+    cp:objectName "blue_cup" .
 
-spec:blue_cup_coverage a dv:CoverageRequirement ;
-    dv:targetsAxis dv:ObjectPoseAxis ;
-    dv:forObject spec:blue_cup ;
-    dv:xMin "TODO" ; dv:xMax "TODO" ;
-    dv:yMin "TODO" ; dv:yMax "TODO" ;
-    dv:gridX "TODO" ; dv:gridY "TODO" ;
-    dv:minEpisodesPerCell "TODO" .
+spec:blue_cup_coverage a cp:CoverageRequirement ;
+    cp:targetsAxis cp:ObjectPoseAxis ;
+    cp:forObject spec:blue_cup ;
+    cp:xMin "TODO" ; cp:xMax "TODO" ;
+    cp:yMin "TODO" ; cp:yMax "TODO" ;
+    cp:gridX "TODO" ; cp:gridY "TODO" ;
+    cp:minEpisodesPerCell "TODO" .
 ```
 
 | Field | Meaning | Type |
 |---|---|---|
-| `dv:objectName` | Object to check; must match `object_pose.<name>` in the dataset | text in quotes (already filled) |
-| `dv:xMin`, `dv:xMax`, `dv:yMin`, `dv:yMax` | Rectangle, in metres, env-local frame, where you want initial positions covered | number, **no quotes** (`8.80`) |
-| `dv:gridX`, `dv:gridY` | Number of cells along x and along y | whole number, no quotes (`3`) |
-| `dv:minEpisodesPerCell` | Episodes needed in each cell | whole number, no quotes (`2`) |
+| `cp:objectName` | Object to check; must match `object_pose.<name>` in the dataset | text in quotes (already filled) |
+| `cp:xMin`, `cp:xMax`, `cp:yMin`, `cp:yMax` | Rectangle, in metres, env-local frame, where you want initial positions covered | number, **no quotes** (`8.80`) |
+| `cp:gridX`, `cp:gridY` | Number of cells along x and along y | whole number, no quotes (`3`) |
+| `cp:minEpisodesPerCell` | Episodes needed in each cell | whole number, no quotes (`2`) |
 
 - Delete a block to stop checking that object. Copy a block to check another one.
-- Leave `dv:targetsAxis dv:ObjectPoseAxis` and `dv:forObject` as they are.
+- Leave `cp:targetsAxis cp:ObjectPoseAxis` and `cp:forObject` as they are.
 - The `# Already in ...` line shows the range your dataset has now. It is information only; the rectangle you write should describe where you *want* coverage.
 
 ### 3.3 Choosing the values
@@ -172,10 +172,10 @@ These are your decisions. Some questions that help:
 **Example (values are illustrative only, not a recommendation):**
 
 ```turtle
-    dv:xMin 0.40 ; dv:xMax 0.70 ;
-    dv:yMin -0.15 ; dv:yMax 0.15 ;
-    dv:gridX 3 ; dv:gridY 3 ;
-    dv:minEpisodesPerCell 2 .
+    cp:xMin 0.40 ; cp:xMax 0.70 ;
+    cp:yMin -0.15 ; cp:yMax 0.15 ;
+    cp:gridX 3 ; cp:gridY 3 ;
+    cp:minEpisodesPerCell 2 .
 ```
 
 = a 30 cm × 30 cm square split into nine 10 cm cells, each needing 2 episodes.
@@ -231,7 +231,7 @@ Exit code: `0` = spec met, `1` = not met or error. Use it in your own scripts, e
 | Message | Cause | Fix |
 |---|---|---|
 | `meta/info.json declares no 'object_pose.<name>' features` | Dataset recorded with leisaac's recorder instead of the repository's | Section 2.2; re-record |
-| `Dataset has no 'object_pose.<name>' column, which the spec requires` | Spec block for an object that was not recorded, or a typo in `dv:objectName` | Fix the name, delete the block, or add the object to `tracked_object_names` |
+| `Dataset has no 'object_pose.<name>' column, which the spec requires` | Spec block for an object that was not recorded, or a typo in `cp:objectName` | Fix the name, delete the block, or add the object to `tracked_object_names` |
 | `Spec still has TODO values: ...` | Unfilled fields | Fill them in (section 3.2) |
 | `... must be a number without quotes, got "8.8"` | Quoted number | Write `8.8`, not `"8.8"` |
 | `... must be a whole number without quotes, got 2.5` | Fraction in `gridX`/`gridY`/`minEpisodesPerCell` | Use a whole number |
@@ -260,7 +260,7 @@ You do not need this section to use the tool.
 
 | Piece | In one sentence | File (under `packages/data_verification/src/data_verification/`) |
 |---|---|---|
-| **RDF** | Data stored as `subject → predicate → object` facts, e.g. `episode/3/placement/blue_cup → dv:x → 8.91` | built from your dataset by `graph.py` |
+| **RDF** | Data stored as `subject → predicate → object` facts, e.g. `episode/3/placement/blue_cup → cp:x → 8.91` | built from your dataset by `graph.py` |
 | **OWL** | The vocabulary: kinds of things (`Episode`, `ObjectPlacement`, `CoverageRequirement`, `CoverageCell`) and the properties linking them | `ontology/object_pose.ttl` |
 | **Your spec** | Your requirement, written as RDF in that vocabulary | your `.ttl` file |
 | **SHACL** | Rules: each rule picks nodes (every episode, every cell, ...) and states what must hold. The coverage rule is a SPARQL query counting initial placements inside each cell | `shapes/object_pose_coverage.ttl` |
@@ -275,12 +275,12 @@ What `check` does:
 To add your own rules (for example "initial z must be above the table"), write SHACL shapes in a separate `.ttl` file and pass it with `--extra-shapes`. The packaged shapes in `shapes/object_pose_coverage.ttl` are commented and are a good starting point. A minimal example:
 
 ```turtle
-@prefix dv:  <urn:physicalai:dv#> .
+@prefix cp:  <http://taica.course/cp/ontology#> .
 @prefix sh:  <http://www.w3.org/ns/shacl#> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 
-dv:AboveTableShape a sh:NodeShape ;
-    sh:targetClass dv:ObjectPlacement ;
-    sh:property [ sh:path dv:z ; sh:minInclusive "0.5"^^xsd:double ;
+cp:AboveTableShape a sh:NodeShape ;
+    sh:targetClass cp:ObjectPlacement ;
+    sh:property [ sh:path cp:z ; sh:minInclusive "0.5"^^xsd:double ;
                   sh:message "Object starts below the table" ] .
 ```

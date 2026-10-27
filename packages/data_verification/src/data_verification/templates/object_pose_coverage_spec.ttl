@@ -15,28 +15,28 @@
 # object; copy a block to check another one. Objects without a block are
 # recorded but never checked.
 
-@prefix dv:   <urn:physicalai:dv#> .
-@prefix spec: <urn:physicalai:spec:mine#> .
+@prefix cp:   <http://taica.course/cp/ontology#> .
+@prefix spec: <http://taica.course/cp/spec/mine#> .
 
 # --- BEGIN OBJECT ---
-spec:OBJECT_NAME a dv:TaskObject ;
+spec:OBJECT_NAME a cp:TaskObject ;
     # Must match the dataset column name object_pose.OBJECT_NAME.
-    dv:objectName "OBJECT_NAME" .
+    cp:objectName "OBJECT_NAME" .
 
-spec:OBJECT_NAME_coverage a dv:CoverageRequirement ;
-    dv:targetsAxis dv:ObjectPoseAxis ;
-    dv:forObject spec:OBJECT_NAME ;
+spec:OBJECT_NAME_coverage a cp:CoverageRequirement ;
+    cp:targetsAxis cp:ObjectPoseAxis ;
+    cp:forObject spec:OBJECT_NAME ;
 
     # Workspace rectangle your data should cover: where this object may start.
     # Numbers, e.g. 8.80 (not quoted).
-    dv:xMin "TODO" ; dv:xMax "TODO" ;
-    dv:yMin "TODO" ; dv:yMax "TODO" ;
+    cp:xMin "TODO" ; cp:xMax "TODO" ;
+    cp:yMin "TODO" ; cp:yMax "TODO" ;
 
     # Grid over the rectangle: number of cells along x and along y.
     # Cell size = (xMax - xMin) / gridX. Whole numbers, e.g. 3.
-    dv:gridX "TODO" ; dv:gridY "TODO" ;
+    cp:gridX "TODO" ; cp:gridY "TODO" ;
 
     # Minimum number of episodes whose initial placement falls inside each
     # cell. Whole number, e.g. 2.
-    dv:minEpisodesPerCell "TODO" .
+    cp:minEpisodesPerCell "TODO" .
 # --- END OBJECT ---
