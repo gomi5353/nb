@@ -1,282 +1,263 @@
 # How to Record Episodes
 
-This guide shows you how to turn your controller into a pipeline that writes a
-LeRobot v3 dataset. You record with the repository's `LeRobotRecorderManager`
-([section 2.1](#21-use-the-repositorys-lerobotrecordermanager)), which is
-connected to the Isaac Lab environment and saves each successful attempt as
-one dataset episode. It also records the pose of every task object, which the
-[data verification](object_pose_coverage.md) step reads. A dataset without
-those columns can't be verified, so this recorder is the only supported way
-to record.
+This guide describes how students build the data collection pipeline for their
+task: a Python script that drives the simulated robot through demonstrations
+and saves them as a LeRobot v3 dataset. That dataset is later used to train
+the policy ([LeRobot Training Procedure](lerobot_training.md)) and is checked
+with the [object-pose coverage](object_pose_coverage.md) tool.
 
-Students are expected to implement the collection entry point for their task.
-The entry point may use a scripted controller, keyboard teleoperation, or
-another input source, but it must connect that controller to the simulator and
-the repository's LeRobot recorder. Use this guide when designing the collection behaviour and
-checking the resulting dataset.
+It extends steps 1 and 2 of [Getting Started](getting_started.md) and assumes
+that step 0 (setup) is complete, so that a shell inside the Isaac Lab container
+is available.
 
 > **Run on:** a Linux machine with an NVIDIA GPU, inside the Isaac Lab
-> container (see [Getting Started](getting_started.md)). Isaac Sim rendering
-> and the required camera observations are not supported by the host-only
-> `uv` environment. Recording always needs `--enable_cameras`.
+> container (see [Getting Started](getting_started.md)). The host `uv`
+> environment cannot run Isaac Sim, and recording always needs the camera
+> images, so every recording command needs `--enable_cameras`.
 
-## 0. Choose the collection design
+Every section starts with one of two labels:
 
-In this guide, **controller** means your *data-collection controller*: the
-code that decides the 8-D action to send at each `env.step()` while you record
-demonstrations (a scripted state machine, keyboard teleoperation, a motion
-planner, ...). It plays the expert that the policy will imitate. It is not the
-robot's low-level joint controller (Isaac Lab's PD actuators, stiffness 80 and
-damping 4, which you don't change), and not the IK solver you may call inside
-it ([section 3](#3-what-your-controller-must-output)).
+- **Required**: the section describes something that students must implement
+  or follow. The [checklist](#11-checklist) at the end collects all of these
+  requirements.
+- **Background**: the section explains how a component works. It contains no
+  work items, but the required sections depend on it.
 
-For one of the HCIS tasks, the recommended workflow is:
+## 1. Key terms
 
-1. Read the task configuration and identify its scene objects, cameras,
-   action space, and success predicate.
-2. Implement a controller (for example a scripted state machine) and a
-   recording loop in your own collection script.
-3. Connect the loop to the repository's `LeRobotRecorderManager` and record
-   one test episode.
-4. Check that the test episode has the `object_pose.*` columns and passes the
-   [object-pose coverage](object_pose_coverage.md) `init` step before you
-   collect the full set.
+**Background**
 
-Use keyboard teleoperation when the demonstration should be driven by a
-person.
+General terms (host, container, environment, episode, controller, collection
+entry point, recorder, dataset) are defined in
+[Getting Started §2](getting_started.md#2-key-terms). This guide adds:
 
-## 1. Know your task
+| Term | Meaning in this guide |
+|---|---|
+| Task configuration | The Python class that defines an Isaac Lab environment: scene, cameras, actions, randomization, and success check ([section 3](#3-the-task-configuration)). |
+| State machine | One way to write a *scripted* controller: the task is split into phases (approach, grasp, lift, ...) and the controller switches from one phase to the next when a condition is met ([section 4.4](#44-scripted-controller-state-machine)). |
+| Recording loop | The loop in the collection script that repeatedly asks the controller for an action, calls `env.step()`, and resets the environment when an attempt is over ([section 5.3](#53-the-collection-entry-point)). |
+| LeRobot v3 dataset format | The file layout that LeRobot reads for training: per-frame numbers (joint states, actions, ...) in Parquet tables under `data/`, camera images as MP4 videos under `videos/`, and a description of all columns and episodes under `meta/` (see the [LeRobot v3 format](https://huggingface.co/docs/lerobot/main/en/lerobot-dataset-v3#format-design)). |
+| Frame | One row of the dataset: what the robot observed and the action it was given at one `env.step()`. |
 
-You have already picked one task. Here is what the environment gives you:
+The word *controller* in this guide never means the robot's low-level joint
+controller (the PD actuators in Isaac Lab, with stiffness 80 and damping 4,
+which stay fixed), nor an inverse kinematics (IK) solver that a controller may
+call ([section 4.3](#43-inverse-kinematics-helpers)).
+
+## 2. What students implement
+
+**Required**
+
+For the task selected by the group, students write **one collection entry
+point**: a Python script in their copy of the repository, for example
+`scripts/collect_cup_stacking.py`. The name and location are free. The script
+contains, or imports, two parts:
+
+1. **A data-collection controller** for the task
+   ([section 4](#4-the-data-collection-controller)). It may be a scripted
+   state machine, keyboard teleoperation, or another input source, as long as
+   it provides the interface in [section 4.1](#41-controller-interface).
+2. **A recording loop** that connects the controller to the Isaac Lab
+   environment and to the repository's `LeRobotRecorderManager`
+   ([section 5.3](#53-the-collection-entry-point)). A complete template of
+   this part is given in this guide.
+
+The result is a LeRobot v3 dataset of successful demonstrations that contains
+the `object_pose.*` columns and has passed the checks in
+[section 9](#9-check-the-dataset). How many episodes to record, and which
+object positions they must cover, is the group's decision.
+
+What the repository provides, and what students do with it:
+
+| Component | File | Students |
+|---|---|---|
+| Task configurations | `packages/simulator/src/simulator/tasks/<task>/<task>_env_cfg.py` | Read; may modify, aligned with rollout ([section 2.1](#21-modifying-the-environment-configuration)) |
+| Shared robot, camera, and action settings | `packages/simulator/src/simulator/tasks/template/single_arm_franka_cfg.py` | Read; may modify, aligned with rollout ([section 2.1](#21-modifying-the-environment-configuration)) |
+| LeRobot recorder | `packages/simulator/src/simulator/utils/object_pose_recording.py` | Import and use |
+| Evaluation files and rollout | `eval/`, `scripts/rollout.py` | Use later for evaluation |
+| Coverage check | `scripts/verify_object_pose_coverage.py` | Run on every dataset |
+| Controller | none | **Implement** |
+| Collection entry point with the recording loop | none (template in [section 5.3](#53-the-collection-entry-point)) | **Implement** |
+
+The collection script itself changes a few settings at runtime, on its own
+copy of the configuration ([section 5.3](#53-the-collection-entry-point):
+time-out, success term, export mode). Groups may also change the configuration
+files; [section 2.1](#21-modifying-the-environment-configuration) lists what
+must stay aligned with rollout.
+
+A recommended order of work:
+
+1. Read the task configuration ([section 3](#3-the-task-configuration)).
+2. Implement the controller one phase at a time and test it without recording
+   ([section 4](#4-the-data-collection-controller)).
+3. Write the collection entry point and record one or two test episodes into a
+   new dataset ([section 5](#5-the-recorder-and-the-recording-loop) and
+   [section 6](#6-run-the-collection-script)).
+4. Check the test dataset, including the `object_pose.*` columns and the
+   coverage tool's `init` step ([section 9](#9-check-the-dataset)).
+5. Record the full dataset and run all checks again.
+
+### 2.1 Modifying the environment configuration
+
+Every environment configuration may be modified for data collection: the task
+configuration files, the shared template, or a new configuration class of the
+group's own. Examples are wider or narrower object-pose randomization, other
+lighting, extra or different object start poses, a stricter success check, or
+a longer episode for recording. Such changes are part of the group's
+data-collection design and are reported with it.
+
+Rollout does not use the recording configuration. It builds the environment
+from the evaluation file in `eval/`, and the final ranking uses a private
+evaluation configuration built on the repository's original template. A
+modification therefore never reaches the graded evaluation; it only changes
+the data. Every modification must stay aligned with rollout in two ways.
+
+**The rollout contract must not change.** These settings define what the
+policy receives and sends during rollout
+([Rollout §4](rollout.md#4-policy-input-and-output-contract)).
+A dataset recorded with different values trains a policy that cannot run in
+evaluation, or runs with a different meaning:
+
+| Setting | Required value | Defined in |
+|---|---|---|
+| Robot | Franka Panda, same joints and gripper | template |
+| Action space | `use_joint_position_actions()`: 7 absolute joint targets + 1 gripper command, stiffness 80, damping 4 | template |
+| Control rate | `sim.dt = 1/60`, `decimation = 1`, one action per `env.step()` | template |
+| Joint state | `observation.state`: the 9 joint positions in the contract order | template |
+| Cameras | exactly `front` and `wrist`, RGB, 640×480 | template (`front` pose per task) |
+| Frame builder | `build_lerobot_frame`, unchanged keys and shapes | template |
+
+**Differences from the evaluation environment are deliberate.** Everything
+else may differ between recording and evaluation, but each difference is a
+distribution shift that the policy must bridge. The relevant values are
+compared side by side: the task configuration against the evaluation file
+`eval/<task>_eval.py` (object start poses and randomization ranges, lighting
+range, robot start pose, `front` camera pose, success check, episode length).
+Recording a wider range than the evaluation file is usually helpful, because
+the private evaluation uses other poses. Recording a narrower range, a moved
+camera, or a different robot start pose usually hurts, and the coverage check
+([Object Pose Coverage](object_pose_coverage.md)) only measures what the
+specification asks for.
+
+
+## 3. The task configuration
+
+**Background**
+
+Each task is defined by a configuration class in its own file. The
+configuration is the description from which Isaac Lab builds the environment;
+students should read it to learn what their controller has to work with.
 
 | | Cup stacking | Cutlery arrangement | Toy blocks collection |
 |---|---|---|---|
 | Task id | `HCIS-CupStacking-SingleArm-v0` | `HCIS-CutleryArrangement-SingleArm-v0` | `HCIS-ToyBlocksCollection-SingleArm-v0` |
-| Objects (`env.scene[name]`) | `blue_cup`, `pink_cup` | `plate`, `fork`, `knife` | `green_block`, `blue_block`, `red_block`, `storage_box` |
-| Task text saved in the dataset | `pick up the blue cup and place it on the pink cup.` | `place the fork on the left and knife on the right of the plate.` | `pick up the toys and place them into the storage box.` |
-| Built-in success check | Blue cup within 5 cm of the pink cup in x and y, and more than 10 cm higher | Fork and knife both within 15 cm (xy) of the plate; fork at smaller x than the plate (the robot's left, the right side of the front image), knife at larger x | Every block within 12 cm (x, y) and 8 cm (z) of the box |
-| Defined in | [`cup_stacking_env_cfg.py`](../packages/simulator/src/simulator/tasks/cup_stacking/cup_stacking_env_cfg.py) | [`cutlery_arrangement_env_cfg.py`](../packages/simulator/src/simulator/tasks/cutlery_arrangement/cutlery_arrangement_env_cfg.py) | [`toy_blocks_collection_env_cfg.py`](../packages/simulator/src/simulator/tasks/toy_blocks_collection/toy_blocks_collection_env_cfg.py) |
+| Configuration file | [`cup_stacking_env_cfg.py`](../packages/simulator/src/simulator/tasks/cup_stacking/cup_stacking_env_cfg.py) | [`cutlery_arrangement_env_cfg.py`](../packages/simulator/src/simulator/tasks/cutlery_arrangement/cutlery_arrangement_env_cfg.py) | [`toy_blocks_collection_env_cfg.py`](../packages/simulator/src/simulator/tasks/toy_blocks_collection/toy_blocks_collection_env_cfg.py) |
+| Scene objects (`env.scene[name]`) | `blue_cup`, `pink_cup` | `plate`, `fork`, `knife` | `green_block`, `blue_block`, `red_block`, `storage_box` |
+| Success check (`success` term) | Blue cup within 5 cm of the pink cup in x and y, and more than 10 cm higher | Fork and knife both within 15 cm (xy) of the plate; fork at smaller x than the plate (the robot's left, the right side of the front image), knife at larger x | Every block within 12 cm (x, y) and 8 cm (z) of the box |
+| Task text (`task_description`) | `pick up the blue cup and place it on the pink cup.` | `place the fork on the left and knife on the right of the plate.` | `pick up the toys and place them into the storage box.` |
+| Episode time-out | 20 s | 40 s | 60 s |
 
-The shared robot, camera, action, and timing defaults are defined in
+The settings shared by all three tasks (robot, cameras, action space, timing)
+are in
 [`single_arm_franka_cfg.py`](../packages/simulator/src/simulator/tasks/template/single_arm_franka_cfg.py).
-The task-specific front-camera pose, object initial poses, randomization ranges,
-and success predicate are in the three task config files above. Keep the
-controller separate from dataset-writing code so that the task logic can be
-tested without recording.
+The concepts in the configuration:
 
-The shared config uses one simulation step per control step
-(`decimation = 1`). Each task sets an episode time-out equal to its graded
-episode length: cup stacking 20 s, cutlery arrangement 40 s, toy blocks
-collection 60 s. Evaluation stops a policy at that time, so your
-demonstrations should finish well within it. Your collection loop may disable
-the time-out and end an episode when the controller reports
-`is_episode_done`; therefore every custom controller must include its own
-phase/episode limit.
+- **Scene objects** are the rigid bodies that the robot manipulates. A script
+  reads an object's current position with
+  `env.scene[name].data.root_pos_w` (world frame, metres) and its orientation
+  with `env.scene[name].data.root_quat_w`.
+- **Cameras** are the two simulated RGB cameras whose images the policy will
+  see: `front`, a fixed camera facing the table, and `wrist`, mounted on the
+  robot hand. Both produce 640×480 images. Every camera in the scene becomes a
+  dataset column, so adding, removing, or renaming a camera breaks the rollout
+  contract ([section 2.1](#21-modifying-the-environment-configuration)).
+- **Action space** is the format of the action passed to `env.step()`: eight
+  numbers per step, seven absolute joint angles for the arm and one gripper
+  command ([section 4.2](#42-the-action)). It is set by
+  `env_cfg.use_joint_position_actions()`, which the collection script and
+  `rollout.py` both call so that recording and evaluation control the robot in
+  the same way.
+- **Success check** (success predicate) is the `success` termination term: a
+  function that looks at the object positions and returns `True` when the task
+  is solved. The recorder uses it to decide which episodes are kept
+  ([section 5.1](#51-how-the-recorder-works)).
+- **Task text** is a short sentence that describes the task. The recorder
+  saves it with every episode ([section 5.4](#54-what-each-frame-contains)).
 
-Every reset shifts the objects by a few centimetres and changes the light
-intensity. Your controller must read object positions at the start of every
-episode. Never hard-code them.
+Facts about the tasks that a controller has to handle:
 
-The built-in success check only looks at object positions, at a single moment.
-It doesn't know whether the gripper is still holding something. In cup stacking,
-for example, the check can already pass while the blue cup is still in the
-gripper, hovering above the pink cup. Decide what "done" means for your
-demonstrations (for example: object released, arm moved clear, check still
-passes) and make your script enforce it.
+- One `env.step()` is one simulation step of 1/60 s (`decimation = 1`).
+- Every reset moves the objects by a few centimetres and changes the light
+  intensity. A controller must read the object positions at the start of every
+  episode and must never hard-code them.
+- The time-out equals the length of an evaluation episode. Evaluation stops a
+  policy at that time, so demonstrations should finish well within it. The
+  collection script disables the time-out and lets the controller end each
+  attempt ([section 5.3](#53-the-collection-entry-point)); therefore every
+  controller needs its own step limit per phase and per episode.
+- The success check looks only at object positions, at a single moment. It
+  does not know whether the gripper still holds an object. In cup stacking,
+  for example, the check can already pass while the blue cup is still in the
+  gripper, hovering above the pink cup. Each group decides what "done" means
+  for its demonstrations (for example: object released, arm moved clear, check
+  still passes), and the controller's `check_success(env)` enforces it.
 
-## 2. How the recorder works
+## 4. The data-collection controller
 
-The recorder runs inside `env.step()` and `env.reset()`. You never call it
-directly, except `finalize()` at the very end.
+The controller is the part that encodes *how* the task is solved. A
+**state machine** is not a separate component next to the controller: it is
+one common way to implement a scripted controller. The relation is:
 
-```text
-env.reset()                  a new, empty episode buffer starts
-    │
-env.step(action)             repeated
-    ├─ before physics:       observation and action are captured
-    ├─ physics runs
-    └─ after physics:        frame t = (what the robot saw, what it was told to do)
-                             is added to the buffer
-                             (the first 5 steps of every episode are skipped)
-    │
-env.reset()                  the recorder reads the termination term "success"
-    ├─ True  → episode is written to disk   (save_episode)
-    └─ False → episode is thrown away       (clear_episode_buffer)
-    │
-recorder_manager.finalize()  files are closed and the dataset can be loaded
-```
-
-This design has some consequences you need to plan for (source:
-`leisaac/enhance/managers/lerobot_recorder_manager.py`):
-
-1. **One frame per `env.step()`.** If you don't step, nothing is recorded.
-2. **The first 5 steps after every reset are skipped.** Camera images from
-   before the reset can still show up there. Make your controller hold still
-   for those steps.
-3. **Keep or drop is decided at the next reset**, by the `success` termination
-   term. Any call to `env.reset()` ends the current episode.
-4. **Only environment 0 is recorded.** Always use `num_envs=1`.
-5. **Export mode must be `EXPORT_SUCCEEDED_ONLY`** (or its resume variant).
-   Failed episodes never reach the disk.
-6. **`finalize()` is mandatory.** Without it the parquet files have no footer
-   and the dataset can't be loaded.
-7. **The dataset goes to `$HF_LEROBOT_HOME/<repo_id>`** (by default
-   `~/.cache/huggingface/lerobot/<repo_id>`; in the container this folder is
-   `datasets/<repo_id>` on the host). If that folder already exists,
-   creating the dataset fails with `FileExistsError`.
-
-### 2.1 Use the repository's `LeRobotRecorderManager`
-
-Import the recorder from this repository, **not** from leisaac:
-
-```python
-from simulator.utils.object_pose_recording import LeRobotRecorderManager       # use this
-# from leisaac.enhance.managers.lerobot_recorder_manager import LeRobotRecorderManager  # not this
-```
-
-[`object_pose_recording.py`](../packages/simulator/src/simulator/utils/object_pose_recording.py)
-defines a modified version of leisaac's `LeRobotRecorderManager`. Episode
-handling is the same; the difference is that it also records object poses,
-which the [object-pose coverage check](object_pose_coverage.md) needs:
-
-- At construction it adds one `object_pose.<name>` feature,
-  float32 `(7,)` = `[x, y, z, qw, qx, qy, qz]`, for every name in the task's
-  `tracked_object_names` (for example `blue_cup`, `pink_cup` in cup stacking).
-- Every frame, `build_lerobot_frame` fills those columns with the object pose
-  relative to the env origin.
-- The coverage checker reads each episode's **first recorded frame**, so these
-  columns tell it where every object started in that episode.
-
-The `object_pose.` prefix is ignored by LeRobot policies. Only `observation.*`
-and `action*` keys become policy inputs and outputs, so these columns do not
-affect training or rollout.
-
-**Don't use leisaac's original class.** It records the same robot data but
-none of the object poses, so you can't check what your dataset covers.
-Data verification is part of the course: a dataset recorded without the
-`object_pose.*` columns has to be recorded again. The repository recorder
-raises an error at construction if the task has no `tracked_object_names`.
-
-The object poses come from the `states` buffer that Isaac Lab's
-`ActionStateRecorderManagerCfg` writes. That config is the task default
-(`env_cfg.recorders`). Keep it, and only change its export mode.
-
-leisaac's own state-machine data generation script shows how the recorder is
-wired in:
-[`scripts/datagen/state_machine/generate.py#L153`](https://github.com/LightwheelAI/leisaac/blob/24d3bcd3f1e4585740fc79921782c41617237812/scripts/datagen/state_machine/generate.py#L153).
-Below is the same pattern reduced to what an HCIS task needs. App launch and
-argument parsing are left out, and `controller` is the controller from
-[section 4](#4-implement-the-collection-pipeline).
-
-```python
-import gymnasium as gym
-import torch
-from isaaclab.managers import DatasetExportMode, TerminationTermCfg
-from isaaclab_tasks.utils import parse_env_cfg
-from leisaac.enhance.datasets.lerobot_dataset_handler import LeRobotDatasetCfg
-from leisaac.enhance.managers import EnhanceDatasetExportMode
-
-import simulator.tasks  # noqa: F401  registers the HCIS-* tasks
-from simulator.utils.object_pose_recording import LeRobotRecorderManager
-
-
-def set_success(env, success: bool):
-    """Overwrite the "success" term. The recorder reads it at the next env.reset()."""
-    fill = torch.ones if success else torch.zeros
-    env.termination_manager.set_term_cfg(
-        "success",
-        TerminationTermCfg(func=lambda env: fill(env.num_envs, dtype=torch.bool, device=env.device)),
-    )
-    env.termination_manager.compute()
-
-
-# 1. Configure the env before it is created.
-env_cfg = parse_env_cfg(args.task, device=args.device, num_envs=1)
-env_cfg.use_joint_position_actions()  # same robot and action setup as rollout; required
-env_cfg.terminations.time_out = None  # the controller decides when an attempt ends
-env_cfg.terminations.success = TerminationTermCfg(  # starts False; set_success() flips it
-    func=lambda env: torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
-)
-env_cfg.recorders.dataset_export_mode = (  # keep env_cfg.recorders itself, see above
-    EnhanceDatasetExportMode.EXPORT_SUCCEEDED_ONLY_RESUME if args.resume
-    else DatasetExportMode.EXPORT_SUCCEEDED_ONLY
-)
-env = gym.make(args.task, cfg=env_cfg).unwrapped
-
-# 2. Replace Isaac Lab's default (HDF5) recorder with the LeRobot one.
-del env.recorder_manager
-env.recorder_manager = LeRobotRecorderManager(
-    env_cfg.recorders,
-    LeRobotDatasetCfg(repo_id=args.dataset_repo_id, fps=60),  # see section 6
-    env,
-)
-
-# 3. Recording loop: step, then judge the attempt and reset.
-controller.setup(env)
-try:
-    with torch.inference_mode():
-        env.reset()
-        controller.reset()
-        while env.recorder_manager.exported_successful_episode_count < args.num_episodes:
-            controller.pre_step(env)
-            env.step(controller.get_action(env))  # the recorder adds one frame here
-            controller.advance()
-            if controller.is_episode_done:
-                set_success(env, controller.check_success(env))
-                env.reset()  # saved if success is True, discarded otherwise
-                set_success(env, False)
-                controller.reset()
-finally:
-    env.recorder_manager.finalize()  # mandatory, see rule 6
-    env.close()
-```
-
-Notes on the loop:
-
-- `set_success(env, True)` must be followed directly by `env.reset()`. If you
-  call `env.step()` while the term is `True`, the env terminates and
-  auto-resets on its own.
-- The episode is exported in `env.reset()`, not in `finalize()`. Reset after
-  the last attempt too, or that episode is lost.
-- `exported_successful_episode_count` only counts episodes saved in the
-  current session. When resuming, add the number that was already in the
-  dataset.
-
-### What each frame contains
-
-The recorder builds the dataset features from the environment. It uses
-`build_feature_from_env` and `SingleArmFrankaTaskEnvCfg.build_lerobot_frame` in
-[`single_arm_franka_cfg.py`](../packages/simulator/src/simulator/tasks/template/single_arm_franka_cfg.py).
-
-| Feature | Shape / type | Content |
+| Controller type | How it decides the action | Uses a state machine? |
 |---|---|---|
-| `observation.state` | `(9,)` float32 | Measured joint positions: `panda_joint1..7` (rad), `panda_finger_joint1..2` (m) |
-| `action` | `(8,)` float32, names `dim_0..dim_7` | `dim_0..dim_6`: target positions for `panda_joint1..7` (rad, absolute). `dim_7`: gripper command (≥ 0 open, < 0 close) |
-| `observation.images.front` | 480×640×3 video | Front camera |
-| `observation.images.wrist` | 480×640×3 video | Wrist camera |
-| `task` → `task_index` | string | `env_cfg.task_description` |
-| `object_pose.<name>` | `(7,)` float32, names `x, y, z, qw, qx, qy, qz` | Pose of each `tracked_object_names` object, relative to the env origin ([section 2.1](#21-use-the-repositorys-lerobotrecordermanager)) |
+| Scripted | A program computes the action from the object positions | Usually: one phase per sub-task |
+| Keyboard teleoperation | A person presses keys; an input adapter turns them into actions | No |
+| Motion planner | A planner computes a collision-free trajectory | Possibly, to sequence the planner calls |
 
-These features match the simulator-side LeRobot frame builder in
-[`single_arm_franka_cfg.py`](../packages/simulator/src/simulator/tasks/template/single_arm_franka_cfg.py).
-The object-pose coverage check needs the `object_pose.<name>` columns. See
-[`object_pose_coverage.md`](object_pose_coverage.md) for how it uses them.
-Don't add cameras to the scene, change the image size, or change the action
-space unless you also update the dataset contract and downstream training
-code. Any camera in the scene becomes a dataset feature.
+Students implement **one** controller of any type. For a scripted controller,
+the state machine *is* the controller. Section 4.4 gives a state-machine
+skeleton and section 4.5 describes keyboard teleoperation.
 
-## 3. What your controller must output
+### 4.1 Controller interface
 
-Each step, your controller returns one action: a `torch.float32` tensor of
+**Required**
+
+The recording loop in [section 5.3](#53-the-collection-entry-point) calls the
+controller through the following members. Every controller provides them, so
+that the same loop works for any controller type.
+
+| Member | Meaning |
+|---|---|
+| `setup(env)` | One-time setup after the environment is created, such as looking up robot joint and body indices. |
+| `reset()` | Clear the per-episode state (phase, timers) at the start of every episode. |
+| `pre_step(env)` | Optional hook before the action is computed, for example to read sensors. |
+| `get_action(env)` | Return one action tensor of shape `(num_envs, 8)` ([section 4.2](#42-the-action)). |
+| `advance()` | Advance the phase and timers after `env.step(action)`. |
+| `is_episode_done` | Property that becomes `True` when the attempt is over and should be judged. |
+| `check_success(env)` | Return the group's final decision whether the attempt succeeded. |
+
+The controller contains no dataset code. This keeps the controller testable
+without recording: a test run steps the environment and prints the result, and
+nothing is written to disk.
+
+### 4.2 The action
+
+**Required**
+
+At each step the controller returns one action: a `torch.float32` tensor of
 shape `(1, 8)` on `env.device`.
 
-- `action[:, 0:7]`: **absolute** target angles for `panda_joint1..7`. These
-  are target angles, not changes from the current angle.
-- `action[:, 7]`: gripper command. Use `+1.0` to open and `-1.0` to close.
+- `action[:, 0:7]`: **absolute** target angles (radians) for `panda_joint1..7`.
+  These are target angles, not changes from the current angle.
+- `action[:, 7]`: gripper command. `+1.0` opens and `-1.0` closes.
 
-Most people plan motions as gripper poses, not joint angles. To convert a pose
-into joint targets, use differential inverse kinematics (IK). You can copy
-these two helpers:
+### 4.3 Inverse kinematics helpers
+
+**Background**
+
+Motions are easier to plan as gripper poses than as joint angles. Differential
+inverse kinematics (IK) converts a desired hand pose into joint targets. The
+following two helpers may be copied into a controller:
 
 ```python
 import isaaclab.utils.math as math_utils
@@ -327,54 +308,25 @@ class HandPoseToJoints:
         return self.ik.compute(hand_pos_b, hand_quat_b, jacobian_b, data.joint_pos[:, self.arm_ids])
 ```
 
-`HandPoseToJoints` is an IK solver that you call from inside your controller.
-Isaac Lab names its solver class `DifferentialIKController`, but it is not the
-controller this guide talks about.
+`HandPoseToJoints` is an IK solver that a controller calls internally. Isaac
+Lab names its solver class `DifferentialIKController`, but it is not the
+data-collection controller of this guide.
 
-Tips:
+Practical notes:
 
-- Quaternions in Isaac Lab are `(w, x, y, z)`.
+- Quaternions in Isaac Lab are ordered `(w, x, y, z)`.
 - The `panda_hand` origin sits about 10 cm behind the point between the
-  fingertips. `env.scene["ee_frame"].data.target_pos_w[:, 0]` gives you that
+  fingertips. `env.scene["ee_frame"].data.target_pos_w[:, 0]` gives that
   fingertip point.
-- Move the target only a few millimetres per step: about 4 mm per step, which
-  is 0.24 m/s at 60 steps per second. If you jump the target far away, the arm
-  jerks, and jerky demonstrations are hard for a policy to imitate.
+- The target should move only a few millimetres per step: about 4 mm per step
+  is 0.24 m/s at 60 steps per second. A target that jumps far away makes the
+  arm jerk, and jerky demonstrations are hard for a policy to imitate.
 
-## 4. Implement the collection pipeline
+### 4.4 Scripted controller (state machine)
 
-Implement a controller and recording loop for the selected task. Keep the
-controller independent from dataset-writing code so it can be tested first
-without producing a dataset. The controller must provide:
+**Required** if the group uses a scripted controller.
 
-| Member | Meaning |
-|---|---|
-| `setup(env)` | One-time calibration and lookup of robot/body indices. |
-| `reset()` | Clear per-episode phase and timer state. |
-| `pre_step(env)` | Optional hook before action generation. |
-| `get_action(env)` | Return one `(num_envs, 8)` action tensor. |
-| `advance()` | Advance the phase/timer after `env.step(action)`. |
-| `is_episode_done` | Become `True` when the attempt should be judged. |
-| `check_success(env)` | Return the final task success decision. |
-
-Recommended implementation order:
-
-1. Read the selected task config and list every scene object needed by the
-   controller. Read poses from `env.scene[name].data.root_pos_w` after each
-   reset; do not copy the initial pose constants into the controller.
-2. Implement one safe phase at a time: approach, grasp, transport, release,
-   retreat, and verification. Bound every phase with a step counter.
-3. Test with `--record` omitted first. Confirm that the arm reaches the target,
-   the gripper command has the intended sign, and `check_success(env)` agrees
-   with the task's `success` term.
-4. Connect the controller to the recording loop and run one or two recorded
-   episodes with a new dataset id.
-5. Inspect the saved dataset before collecting the full set. Only then collect
-   the requested number of successful episodes and run the coverage check.
-
-### 4.1 Scripted controller (state machine)
-
-A skeleton. Fill in your own phases.
+A skeleton; the phases are task-specific and left to the group:
 
 ```python
 import torch
@@ -418,86 +370,373 @@ class MyStateMachine:
         return self._episode_done
 ```
 
-Good habits for scripted demonstrations:
+A suggested development order:
 
-- Give each phase a step limit. If a phase takes too long, set
-  `_episode_done = True` and let `check_success(env)` return `False` instead
-  of letting it run indefinitely.
+1. List every scene object that the controller needs. Read the poses from
+   `env.scene[name].data.root_pos_w` after each reset; never copy the initial
+   pose constants from the configuration file.
+2. Implement one phase at a time: approach, grasp, transport, release,
+   retreat, and verification. Bound every phase with a step counter.
+3. Test without recording (`--record` omitted,
+   [section 6](#6-run-the-collection-script)). Confirm that the arm reaches
+   the target, that the gripper command has the intended sign, and that
+   `check_success(env)` agrees with the task's `success` term.
+
+Good practice for scripted demonstrations:
+
+- Give each phase a step limit. A phase that takes too long sets
+  `_episode_done = True`, and `check_success(env)` returns `False`, instead
+  of running indefinitely.
 - Set `is_episode_done` shortly after the task is done (object released, small
   retreat). Motion after that point teaches the policy to keep moving once the
   job is finished.
-- Add some variation, for example small random offsets in approach height or
+- Add variation, for example small random offsets in approach height or
   timing. A thousand identical trajectories teach less than a hundred varied
   ones.
 
-### 4.2 Keyboard teleoperation
+### 4.5 Keyboard teleoperation
 
-For keyboard teleoperation, implement an input adapter that converts keyboard
-events into the same `(num_envs, 8)` action tensor used by the scripted
-controller. Document the key bindings in your own collection entry point.
-Keep input handling and episode status separate from the recorder, so the same
-recording loop ([section 2.1](#21-use-the-repositorys-lerobotrecordermanager))
-works with a scripted controller.
+**Required** if the group uses keyboard teleoperation.
 
-Keyboard teleoperation needs the GUI (don't pass `--headless`) and a real-time
-rate limiter. Without a rate limiter, the simulation runs as fast as it can and
-the arm moves too fast to control.
+A keyboard controller consists of an input adapter that converts key events
+into the same `(num_envs, 8)` action tensor, plus the members of
+[section 4.1](#41-controller-interface). The key bindings are documented in
+the group's collection script. Input handling and episode status stay separate
+from the recorder, so that the recording loop in
+[section 5.3](#53-the-collection-entry-point) works unchanged.
 
-Do not step the simulation while waiting for the operator to start. Begin
-recording after the scene is stable, and discard practice or calibration
-motion.
+Keyboard teleoperation needs the GUI (no `--headless`) and a real-time rate
+limiter. Without a rate limiter, the simulation runs as fast as it can and the
+arm moves too fast to control. The simulation is not stepped while the script
+waits for the operator to start; recording begins after the scene is stable,
+and practice or calibration motion is discarded.
 
-## 5. Run it
+## 5. The recorder and the recording loop
 
-```bash
-# scripted controller: headless is fine and faster
-python <your_collection_script>.py \
-    --task HCIS-CupStacking-SingleArm-v0 \
-    --num_envs 1 --device cuda --enable_cameras \
-    --record --dataset_repo_id <hf_user>/cup-stacking-demos \
-    --dataset_fps 60 --num_episodes 50
+### 5.1 How the recorder works
 
-# keyboard controller: needs the GUI and real-time speed
-python <your_collection_script>.py \
-    --task HCIS-CupStacking-SingleArm-v0 \
-    --input keyboard --num_envs 1 --device cuda \
-    --enable_cameras --record \
-    --dataset_repo_id <hf_user>/cup-stacking-demos \
-    --dataset_fps 60 --num_episodes 20
+**Background**
+
+The recorder is the component that writes the LeRobot v3 dataset. Students do
+not write a dataset writer of their own: they attach the repository's
+`LeRobotRecorderManager` to the environment, and it captures frames and saves
+episodes by itself. It runs inside `env.step()` and `env.reset()`; the script
+calls it directly only once, `finalize()` at the very end.
+
+```text
+env.reset()                  a new, empty episode buffer starts
+    │
+env.step(action)             repeated
+    ├─ before physics:       observation and action are captured
+    ├─ physics runs
+    └─ after physics:        frame t = (what the robot saw, what it was told to do)
+                             is added to the buffer
+                             (the first 5 steps of every episode are skipped)
+    │
+env.reset()                  the recorder reads the termination term "success"
+    ├─ True  → episode is written to disk
+    └─ False → episode is thrown away
+    │
+recorder_manager.finalize()  files are closed and the dataset can be loaded
 ```
 
-Run inside the Isaac Lab environment. The option names above are illustrative;
-make your own script expose equivalent options. Replace the task id with one
-of the three registered tasks. The collector should report success/failure and
-keep only successful episodes in the training dataset.
+Consequences that the recording loop has to respect (source:
+`leisaac/enhance/managers/lerobot_recorder_manager.py`):
 
-## 6. Choosing `fps`
+1. **One frame per `env.step()`.** Without a step, nothing is recorded.
+2. **The first 5 steps after every reset are skipped.** Camera images from
+   before the reset can still appear there, so the controller holds still for
+   those steps.
+3. **Keep or drop is decided at the next reset**, by the `success` termination
+   term. Any call to `env.reset()` ends the current episode.
+4. **Only failed episodes are dropped, and they are dropped always.** The
+   recorder accepts only the export mode `EXPORT_SUCCEEDED_ONLY` (or its
+   resume variant); failed episodes never reach the disk.
+5. **Only environment 0 is recorded.** Recording always uses `num_envs=1`.
+6. **`finalize()` is mandatory.** Without it the Parquet files have no footer
+   and the dataset cannot be loaded.
+7. **The dataset goes to `$HF_LEROBOT_HOME/<repo_id>`**, by default
+   `~/.cache/huggingface/lerobot/<repo_id>`. In the container this folder is
+   mounted from `datasets/<repo_id>` on the host. If the folder already
+   exists, creating the dataset fails with `FileExistsError`.
+
+### 5.2 The repository's recorder and object poses
+
+**Required**
+
+The recorder is imported from this repository, **not** from leisaac:
+
+```python
+from simulator.utils.object_pose_recording import LeRobotRecorderManager       # use this
+# from leisaac.enhance.managers.lerobot_recorder_manager import LeRobotRecorderManager  # not this
+```
+
+[`object_pose_recording.py`](../packages/simulator/src/simulator/utils/object_pose_recording.py)
+defines a subclass of leisaac's `LeRobotRecorderManager`. The two classes
+compare as follows:
+
+| | leisaac's `LeRobotRecorderManager` | Repository's `LeRobotRecorderManager` |
+|---|---|---|
+| Frame capture, skipped steps, keep/drop rule, `finalize()` | As in [section 5.1](#51-how-the-recorder-works) | Identical (inherited) |
+| Robot state, action, camera images, task text | Recorded | Recorded (identical) |
+| Pose of every task object (`object_pose.<name>`) | Not recorded | Recorded |
+| Usable for the coverage check | No | Yes |
+
+**Why object poses are recorded.** A policy can only imitate situations that
+appear in its demonstrations. Every reset places the objects at a random
+position, and evaluation does the same. If a region of the table has few
+demonstrations, the policy has little to imitate there and is likely to fail.
+The [object-pose coverage check](object_pose_coverage.md) finds such regions:
+it reads where each object started in every episode, divides the table area
+into cells, and reports cells with too few episodes. Robot joint states and
+camera images do not state the object positions directly, so the positions are
+recorded as separate columns.
+
+**How they are recorded.** The recorder:
+
+- declares one `object_pose.<name>` column, float32 `(7,)` =
+  `[x, y, z, qw, qx, qy, qz]`, for every name in the task configuration's
+  `tracked_object_names` (all scene objects of the three tasks are already
+  listed there);
+- fills these columns in every frame with the object pose relative to the
+  environment origin;
+- raises a `ValueError` when it is created for a task whose
+  `tracked_object_names` is empty. This matters only for an Advanced Level
+  task that the group defines itself.
+
+The coverage check uses the **first recorded frame** of each episode, which is
+where every object started. The columns do not affect training or rollout:
+LeRobot policies use only the `observation.*` and `action*` columns as inputs
+and outputs.
+
+A dataset recorded with leisaac's original class has no object poses and
+cannot be verified, so it must be recorded again. Writing frames with a custom
+LeRobot writer is not supported for the same reason.
+
+The object poses are read from the `states` buffer that Isaac Lab's
+`ActionStateRecorderManagerCfg` fills. That configuration is the task default
+(`env_cfg.recorders`); the collection script keeps it and changes only its
+export mode.
+
+### 5.3 The collection entry point
+
+**Required**
+
+The template below is a complete collection entry point except for the
+controller. It follows the same pattern as leisaac's own state-machine data
+generation script
+([`scripts/datagen/state_machine/generate.py#L153`](https://github.com/LightwheelAI/leisaac/blob/24d3bcd3f1e4585740fc79921782c41617237812/scripts/datagen/state_machine/generate.py#L153)),
+reduced to what an HCIS task needs. `MyStateMachine` is the controller from
+[section 4.4](#44-scripted-controller-state-machine); any controller with the
+interface of [section 4.1](#41-controller-interface) can be used instead.
+
+```python
+"""Collection entry point: record demonstrations into a LeRobot v3 dataset."""
+
+import argparse
+
+from isaaclab.app import AppLauncher
+
+parser = argparse.ArgumentParser(description="Record demonstrations into a LeRobot v3 dataset.")
+parser.add_argument("--task", required=True, help="Task id, e.g. HCIS-CupStacking-SingleArm-v0.")
+parser.add_argument("--record", action="store_true", help="Write a dataset; without it nothing is saved.")
+parser.add_argument("--dataset_repo_id", default=None, help="<hf_user>/<dataset name>.")
+parser.add_argument("--num_episodes", type=int, default=1, help="Successful episodes to record.")
+parser.add_argument("--resume", action="store_true", help="Append to a finalized dataset.")
+AppLauncher.add_app_launcher_args(parser)  # adds --device, --headless, --enable_cameras, ...
+args = parser.parse_args()
+
+# Isaac Sim must be running before Isaac Lab, leisaac, or the tasks are imported.
+simulation_app = AppLauncher(vars(args)).app
+
+import gymnasium as gym
+import torch
+from isaaclab.managers import DatasetExportMode, TerminationTermCfg
+from isaaclab_tasks.utils import parse_env_cfg
+from leisaac.enhance.datasets.lerobot_dataset_handler import LeRobotDatasetCfg
+from leisaac.enhance.managers import EnhanceDatasetExportMode
+
+import simulator.tasks  # noqa: F401  registers the HCIS-* tasks
+from simulator.utils.object_pose_recording import LeRobotRecorderManager
+
+from my_controller import MyStateMachine  # the group's controller (section 4)
+
+
+def set_success(env, success: bool):
+    """Overwrite the "success" term. The recorder reads it at the next env.reset()."""
+    fill = torch.ones if success else torch.zeros
+    env.termination_manager.set_term_cfg(
+        "success",
+        TerminationTermCfg(func=lambda env: fill(env.num_envs, dtype=torch.bool, device=env.device)),
+    )
+    env.termination_manager.compute()
+
+
+# 1. Configure the env before it is created.
+env_cfg = parse_env_cfg(args.task, device=args.device, num_envs=1)
+env_cfg.use_joint_position_actions()  # same robot and action setup as rollout; required
+env_cfg.terminations.time_out = None  # the controller decides when an attempt ends
+env_cfg.terminations.success = TerminationTermCfg(  # starts False; set_success() flips it
+    func=lambda env: torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+)
+if not args.record:
+    env_cfg.recorders.dataset_export_mode = DatasetExportMode.EXPORT_NONE  # test run: write nothing
+elif args.resume:
+    env_cfg.recorders.dataset_export_mode = EnhanceDatasetExportMode.EXPORT_SUCCEEDED_ONLY_RESUME
+else:
+    env_cfg.recorders.dataset_export_mode = DatasetExportMode.EXPORT_SUCCEEDED_ONLY
+env = gym.make(args.task, cfg=env_cfg).unwrapped
+
+# 2. Replace Isaac Lab's default (HDF5) recorder with the LeRobot one.
+if args.record:
+    del env.recorder_manager
+    env.recorder_manager = LeRobotRecorderManager(
+        env_cfg.recorders,
+        LeRobotDatasetCfg(repo_id=args.dataset_repo_id, fps=60),  # see section 7
+        env,
+    )
+
+# 3. Recording loop: step, then judge the attempt and reset.
+controller = MyStateMachine()
+controller.setup(env)
+successes = attempts = 0
+try:
+    with torch.inference_mode():
+        env.reset()
+        controller.reset()
+        while successes < args.num_episodes and simulation_app.is_running():
+            controller.pre_step(env)
+            env.step(controller.get_action(env))  # the recorder adds one frame here
+            controller.advance()
+            if controller.is_episode_done:
+                success = bool(controller.check_success(env))
+                attempts += 1
+                successes += success
+                print(f"attempt {attempts}: {'success' if success else 'failure'} ({successes}/{args.num_episodes})")
+                set_success(env, success)
+                env.reset()  # saved if success is True, discarded otherwise
+                set_success(env, False)
+                controller.reset()
+finally:
+    if args.record:
+        env.recorder_manager.finalize()  # mandatory, see section 5.1
+    env.close()
+    simulation_app.close()
+```
+
+Notes on the loop:
+
+- `set_success(env, True)` is followed directly by `env.reset()`. A call to
+  `env.step()` while the term is `True` makes the environment terminate and
+  reset on its own.
+- The episode is written in `env.reset()`, not in `finalize()`. The loop
+  resets after the last attempt too; otherwise that episode is lost.
+- `successes` counts only the episodes saved in the current session. When
+  resuming, the number already in the dataset is added by hand.
+- The script imports its controller from a module next to it
+  (`my_controller.py` above). Keeping the controller in its own file also lets
+  it be tested on its own.
+
+### 5.4 What each frame contains
+
+**Background**
+
+The recorder builds the dataset columns from the environment, using
+`build_feature_from_env` and `SingleArmFrankaTaskEnvCfg.build_lerobot_frame` in
+[`single_arm_franka_cfg.py`](../packages/simulator/src/simulator/tasks/template/single_arm_franka_cfg.py).
+
+| Feature | Shape / type | Content |
+|---|---|---|
+| `observation.state` | `(9,)` float32 | Measured joint positions: `panda_joint1..7` (rad), `panda_finger_joint1..2` (m) |
+| `action` | `(8,)` float32, names `dim_0..dim_7` | `dim_0..dim_6`: target positions for `panda_joint1..7` (rad, absolute). `dim_7`: gripper command (≥ 0 open, < 0 close) |
+| `observation.images.front` | 480×640×3 video | Front camera |
+| `observation.images.wrist` | 480×640×3 video | Wrist camera |
+| `task_index` | int64 | Index of the task text, see below |
+| `object_pose.<name>` | `(7,)` float32, names `x, y, z, qw, qx, qy, qz` | Pose of each `tracked_object_names` object, relative to the env origin ([section 5.2](#52-the-repositorys-recorder-and-object-poses)) |
+
+**Where the task text is stored.** Every frame is handed to LeRobot with the
+task text from the configuration's `task_description`. LeRobot does not repeat
+the sentence in every row. It stores each distinct sentence once in
+`meta/tasks.parquet`, together with its number, and writes only that number in
+the `task_index` column of `data/`. The episode table
+`meta/episodes/.../*.parquet` also lists the task text of each episode in its
+`tasks` column. All episodes of one task share the same sentence, so
+`task_index` is `0` everywhere. When the dataset is loaded, LeRobot looks the
+number up again and returns the sentence as `task`. Language-conditioned
+policies (for example pi0 or SmolVLA) use it as their instruction; Diffusion
+Policy and ACT ignore it.
+
+The scene, the image size, and the action space are not changed: every camera
+in the scene becomes a dataset feature, and evaluation feeds the policy
+exactly the features listed above.
+
+## 6. Run the collection script
+
+**Required**
+
+The script is run from the repository root, inside the container. The
+repository folder is mounted into the container, so a script written on the
+host is available there immediately.
+
+```bash
+# test run: controller only, nothing is saved
+python scripts/collect_cup_stacking.py \
+    --task HCIS-CupStacking-SingleArm-v0 \
+    --device cuda --enable_cameras --num_episodes 3
+
+# scripted controller: headless is faster
+python scripts/collect_cup_stacking.py \
+    --task HCIS-CupStacking-SingleArm-v0 \
+    --device cuda --enable_cameras --headless \
+    --record --dataset_repo_id ${HF_USER}/cup-stacking-demos \
+    --num_episodes 50
+
+# keyboard controller: needs the GUI and real-time speed
+python scripts/collect_cup_stacking.py \
+    --task HCIS-CupStacking-SingleArm-v0 \
+    --input keyboard --device cuda --enable_cameras \
+    --record --dataset_repo_id ${HF_USER}/cup-stacking-demos \
+    --num_episodes 20
+```
+
+The script name and the `--input` option are examples; the template in
+[section 5.3](#53-the-collection-entry-point) defines the other options. The
+task id is replaced with that of the group's task. The script reports
+success or failure for every attempt, and only successful attempts are saved.
+
+## 7. Choosing `fps`
+
+**Required**
 
 Robot state and action are recorded every simulation step (60 Hz). Camera
 images refresh at 30 Hz to save rendering cost, so each image appears on two
-consecutive frames. Record one frame per `env.step()`; never subsample.
+consecutive frames. One frame is recorded per `env.step()`; frames are never
+subsampled.
 
-Set the dataset `fps` to **60**, so that frame timestamps match simulation
+The dataset `fps` is set to **60**, so that frame timestamps match simulation
 time. The `fps` value is dataset metadata: it does not change the physics step
 rate or how often frames are written.
 
-Two things to know:
-
 - Both cameras are 640×480 RGB and refresh every 1/30 s (`update_period`).
-- Don't change `sim.dt` or `decimation` to get a different rate. Evaluation
-  runs your task with its default settings and applies one policy action per
-  `env.step()`, so your data must be recorded at that same step rate.
+- `sim.dt` and `decimation` are not changed to obtain a different rate.
+  Evaluation runs the task with its default settings and applies one policy
+  action per `env.step()`, so the data must be recorded at that same step rate.
 
-## 7. Recording over several sessions
+## 8. Recording over several sessions
 
-To add episodes to a dataset finalized earlier, set the export mode to
-`EnhanceDatasetExportMode.EXPORT_SUCCEEDED_ONLY_RESUME` (the `args.resume`
-branch in [section 2.1](#21-use-the-repositorys-lerobotrecordermanager)).
-Use the same task, dataset id, `tracked_object_names`, and FPS as the first
-session. Only resume a finalized dataset; copy the folder first so a failed
-session cannot damage existing episodes.
+**Background**
 
-## 8. Check your dataset
+To add episodes to a dataset finalized earlier, the script is run with
+`--resume`, which sets the export mode to
+`EnhanceDatasetExportMode.EXPORT_SUCCEEDED_ONLY_RESUME`
+([section 5.3](#53-the-collection-entry-point)). The task, dataset id,
+`tracked_object_names`, and `fps` must be the same as in the first session.
+Only a finalized dataset can be resumed; copying the folder first protects the
+existing episodes from a failed session.
+
+## 9. Check the dataset
+
+**Required**
 
 1. **Load it and look at the numbers:**
 
@@ -509,13 +748,16 @@ session cannot damage existing episodes.
    print(list(ds.features))
    ```
 
+   The feature list contains one `object_pose.<name>` entry per tracked
+   object.
+
 2. **Watch a few episodes** with the
-   [LeRobot Dataset Visualizer](lerobot_dataset_visualizer.md). Check that the
-   first frame shows the freshly reset scene, the last frame shows the task
-   done, both cameras show the right view, and the state curves move when the
+   [LeRobot Dataset Visualizer](lerobot_dataset_visualizer.md). The first
+   frame shows the freshly reset scene, the last frame shows the finished
+   task, both cameras show the right view, and the state curves move when the
    arm moves.
 
-3. **Check object-pose coverage.** This step is required for every dataset:
+3. **Run the object-pose coverage check** on every dataset:
 
    ```bash
    uv run python scripts/verify_object_pose_coverage.py init \
@@ -527,40 +769,45 @@ session cannot damage existing episodes.
        --spec specs/cup_stacking_coverage.ttl
    ```
 
-   Run these on the host, from the repository root: `datasets/` on the host
-   is the container's `~/.cache/huggingface/lerobot/`. See
-   [Object Pose Coverage](object_pose_coverage.md) for the meaning of the
-   report. This check is a coverage diagnostic; it does not replace visual
-   inspection or LeRobot loading.
+   These commands run on the host, from the repository root: `datasets/` on
+   the host is the container's `~/.cache/huggingface/lerobot/`.
+   [Object Pose Coverage](object_pose_coverage.md) explains the report. The
+   check is a coverage diagnostic; it does not replace visual inspection or
+   loading the dataset in LeRobot.
 
-## 9. Troubleshooting
+## 10. Troubleshooting
+
+**Background**
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `FileExistsError` right at start | The dataset folder already exists | Pick a new `repo_id`, delete the old folder, or [resume](#7-recording-over-several-sessions) |
+| `FileExistsError` right at start | The dataset folder already exists | Choose a new `repo_id`, delete the old folder, or [resume](#8-recording-over-several-sessions) |
 | Recorder rejects the export mode | `env_cfg.recorders.dataset_export_mode` was not set before the recorder was created | Set it to `EXPORT_SUCCEEDED_ONLY` (or the resume variant) before creating the recorder |
-| Dataset won't load / parquet footer error | `finalize()` never ran (crash, `kill -9`, closed terminal) | Keep `finalize()` in `finally`; stop with Ctrl+C |
-| Every attempt is reported as failed | `check_success(env)` is `False` or the controller ends the attempt too early | Print the object poses and compare the predicate with the task config in section 1 |
-| Error or empty episode right after a saved one | The next episode was not reset or the success state was not cleared | After every `env.reset()`, set the success term back to `False` (`set_success(env, False)` in [section 2.1](#21-use-the-repositorys-lerobotrecordermanager)) |
-| First frames show the previous episode's scene | Controller moved during the skipped steps | Hold still for at least 5 steps after reset |
+| Dataset will not load / Parquet footer error | `finalize()` never ran (crash, `kill -9`, closed terminal) | Keep `finalize()` in `finally`; stop with Ctrl+C; resume only a finalized dataset, and use a new repo id for a corrupted one |
+| Every attempt is reported as failed | `check_success(env)` returns `False`, or the controller ends the attempt too early | Print the object poses and compare them with the success check in [section 3](#3-the-task-configuration) |
+| Error or empty episode right after a saved one | The success state was not cleared after the reset | After every `env.reset()`, set the success term back to `False` (`set_success(env, False)`, [section 5.3](#53-the-collection-entry-point)) |
+| First frames show the previous episode's scene | The controller moved during the skipped steps | Hold still for at least 5 steps after each reset |
 | Camera errors / images missing | Started without `--enable_cameras` | Add the flag |
-| Missing `object_pose.*` features | leisaac's `LeRobotRecorderManager` was imported instead of the repository's | Import from `simulator.utils.object_pose_recording` ([section 2.1](#21-use-the-repositorys-lerobotrecordermanager)) and record again |
-| `ValueError: ... tracked_object_names is empty` | Your task cfg tracks no objects | Set `tracked_object_names` to the task's rigid objects |
+| Missing `object_pose.*` features | leisaac's `LeRobotRecorderManager` was imported instead of the repository's | Import from `simulator.utils.object_pose_recording` ([section 5.2](#52-the-repositorys-recorder-and-object-poses)) and record again |
+| `ValueError: ... tracked_object_names is empty` | The task configuration tracks no objects (only possible for a self-defined task) | Set `tracked_object_names` to the task's rigid objects |
 | `KeyError: '<object name>'` on the first recorded frame | `env_cfg.recorders` was replaced, so the `states` buffer is missing | Keep the default `ActionStateRecorderManagerCfg` and change only its export mode |
-| Dataset cannot be opened after an interrupted run | `finalize()` did not run | Stop with Ctrl+C when possible, resume only a finalized dataset, and use a new repo id for a corrupted one |
-| Keyboard does nothing | Running `--headless`, or your input adapter is still waiting for its start key | Run with the GUI and press the start key your script defines |
+| Keyboard does nothing | Running `--headless`, or the input adapter still waits for its start key | Run with the GUI and press the start key that the script defines |
 
-## 10. Checklist
+## 11. Checklist
 
-- [ ] `num_envs=1`, `--enable_cameras`.
-- [ ] Controller reads object poses fresh every episode.
-- [ ] Controller holds still for at least 5 steps after each reset.
+**Required**
+
+- [ ] One collection entry point and one controller implemented.
+- [ ] Any configuration change keeps the rollout contract, and its differences from `eval/<task>_eval.py` are known and reported ([section 2.1](#21-modifying-the-environment-configuration)).
+- [ ] `num_envs=1` and `--enable_cameras`.
+- [ ] `env_cfg.use_joint_position_actions()` is called before the environment is created.
+- [ ] The controller reads object poses fresh every episode.
+- [ ] The controller holds still for at least 5 steps after each reset.
 - [ ] Each episode is a single attempt that ends shortly after the task is done.
-- [ ] Your definition of "done" is stricter than, or equal to, the built-in check, and your script enforces it.
-- [ ] Failed, stuck, or interrupted attempts are dropped, never saved.
-- [ ] `env_cfg.use_joint_position_actions()` is called before the env is created.
+- [ ] The group's definition of "done" is stricter than, or equal to, the built-in check, and `check_success(env)` enforces it.
+- [ ] Every phase and every episode has a step limit.
+- [ ] The recorder is imported from `simulator.utils.object_pose_recording`, not from leisaac.
 - [ ] Dataset `fps` is 60 in every session.
 - [ ] `finalize()` runs at the end of every session.
-- [ ] The recorder is imported from `simulator.utils.object_pose_recording`, not from leisaac.
 - [ ] `meta/info.json` lists one `object_pose.<name>` feature per tracked object.
-- [ ] The dataset loads in LeRobot and you ran the object-pose coverage check on it.
+- [ ] The dataset loads in LeRobot, a few episodes were inspected visually, and the object-pose coverage check was run on it.

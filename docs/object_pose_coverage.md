@@ -1,110 +1,113 @@
-# Object Pose Coverage: Check Your Own Dataset
+# Object Pose Coverage
 
----
+This guide describes the object-pose coverage check, the data-verification
+tool of the course project. It extends steps 3 and 6 of
+[Getting Started](getting_started.md): every dataset is checked before training,
+and the report is used again when a trained policy fails.
 
-## Overview
+Every section starts with one of two labels: **Required** (something students
+must do or follow) or **Background** (explanation without work items).
 
- This tool shows you **where in the workspace your dataset actually has episodes**, measured against a requirement **you** write.
+## 1. What the check does and why
 
-- It is a **required step** of your workflow. You decide the region, the resolution and how many episodes are enough.
-- It needs the `object_pose.*` columns, which only the repository's `LeRobotRecorderManager` writes ([section 2](#2-record-object-poses)). Record every dataset with it.
+**Background**
 
-Contents:
+Imitation-learning policies tend to perform well only in situations that the
+demonstrations represent well. If evaluation places objects where the dataset
+has few or no episodes, the policy may fail because of missing data rather than
+because of the model.
 
-1. [Workflow](#1-workflow)
-2. [Record object poses](#2-record-object-poses)
-3. [Write your spec](#3-write-your-spec)
-4. [Run the check and read the report](#4-run-the-check-and-read-the-report)
-5. [Troubleshooting](#5-troubleshooting)
-6. [What the check does not cover](#6-what-the-check-does-not-cover)
-7. [How it works: RDF, OWL, SHACL](#7-how-it-works-rdf-owl-shacl)
+Object pose is the factor checked here because it is the main thing that
+changes between episodes: every reset places the objects at a random position,
+while the scene, robot, cameras, and task stay the same. Object poses can also
+be read directly from the simulator, without labeling or estimation.
 
----
+The check answers one question: **where on the table does the dataset actually
+have episodes, measured against a requirement that the group writes?** The
+group states, per object, a rectangle of the table, a grid that divides it into
+cells, and a minimum number of episodes per cell. The check counts the episodes
+whose object *started* in each cell and reports the cells below the minimum.
 
-## Why Object Pose Coverage Verification Matters
-
-Coverage data verification is important because imitation learning policies tend to perform well only in situations that are sufficiently represented in their training data. If the evaluation environment contains object poses that are missing or underrepresented in the demonstrations, the policy may fail due to insufficient data coverage rather than limitations of the model itself. Verifying data coverage helps identify these gaps early, allowing researchers to determine whether additional data collection is necessary before investing time and computational resources in training. Object pose is selected as a coverage factor because it is the primary variable that changes between episodes, while the scene, robot, cameras, and task generally remain unchanged. Since object initial poses are randomized during environment resets, they are a likely source of differences between training and evaluation scenarios. Furthermore, object poses can be obtained directly from the simulator without additional labeling or estimation, making them straightforward to measure and verify. By analyzing the distribution of initial object positions and comparing it against predefined coverage requirements, underrepresented regions in the dataset can be identified. Therefore, object pose serves as a practical and intuitive starting point for demonstrating the coverage verification process, which can later be extended to other factors, such as lighting conditions.
-
----
-
-## 1. Workflow
-
+```text
+record ──▶ init spec ──▶ fill in the values ──▶ check ──▶ collect where cells are thin ──┐
+  ▲  (object_pose.* columns)                                                             │
+  └──────────────────────────────────────────────────────────────────────────────────────┘
 ```
-record episodes ──▶ init spec ──▶ fill in TODOs ──▶ check ──▶ collect where cells are empty ──┐
-      ▲  (object_pose.* columns)                                                             │
-      └──────────────────────────────────────────────────────────────────────────────────────┘
-```
 
-| Step | Where it runs | Command / code |
+| Step | Runs in | Command |
 |---|---|---|
-| Record, with object poses | Isaac Sim container | your collection script + the repository recorder (section 2) |
-| Create a spec skeleton | host (`uv` env) | `verify_object_pose_coverage.py init` |
-| Fill in the requirement | any editor | section 3 |
-| Check | host (`uv` env) | `verify_object_pose_coverage.py check` |
+| Record, with object poses | Isaac Lab container | The group's collection script with the repository recorder ([How to Record Episodes §5.2](how_to_record.md#52-the-repositorys-recorder-and-object-poses)) |
+| Create a specification skeleton | Host `uv` environment | `verify_object_pose_coverage.py init` |
+| Fill in the requirement | Any editor | [Section 3](#3-write-the-specification) |
+| Check | Host `uv` environment | `verify_object_pose_coverage.py check` |
 
-The check reads only `meta/info.json` and `data/**/*.parquet`. It never starts the simulator and never decodes video, so it runs in seconds.
+The check reads only `meta/info.json` and `data/**/*.parquet`. It never starts
+the simulator and never decodes video, so it runs in seconds.
 
----
+The values of the requirement (region, grid, minimum) are the group's decision.
+Running the check is required for every dataset; the report is evidence for the
+group's own analysis, not a grade.
 
-## 2. Record object poses
+## 2. The object-pose columns
 
-### 2.1 The column
+**Background**
 
-| Key | dtype | shape | Content |
+The check needs the `object_pose.*` columns. Only the repository's
+`LeRobotRecorderManager` writes them; [How to Record Episodes
+§5.2](how_to_record.md#52-the-repositorys-recorder-and-object-poses) explains
+the recorder. Each column has this format:
+
+| Key | dtype | Shape | Content |
 |---|---|---|---|
 | `object_pose.<name>` | float32 | `(7,)` | `[x, y, z, qw, qx, qy, qz]` |
 
-- **Position:** metres, relative to the env origin (env-local frame). This is the frame used by `init_state.pos` in the task cfgs, so the numbers you see there and in your spec are directly comparable.
-- **Orientation:** quaternion `(w, x, y, z)`, IsaacLab order. Not used by the check yet, but recorded so you can analyse it yourself.
-- **Every frame.** The check uses the first frame of each episode, and a full trajectory is useful for your own debugging.
-- **Name** = the object's scene name (`blue_cup`, `fork`, ...). Keep the `object_pose.` prefix exactly.
+- **Position**: metres, relative to the environment origin. This is the frame
+  of `init_state.pos` in the task configurations, so those numbers and the
+  numbers in a specification are directly comparable.
+- **Orientation**: quaternion `(w, x, y, z)`. Not used by the default check, but
+  recorded for the group's own analysis.
+- **Every frame** is recorded. The check uses the first recorded frame of each
+  episode, which is where the objects started.
+- **Name**: the object's scene name (`blue_cup`, `fork`, ...).
 
-These columns are **not policy inputs**: LeRobot only feeds `observation.*` keys and images to a policy. Your training and rollout do not change.
+The recorded objects are those in `tracked_object_names` of the task
+configuration:
 
-Which objects are recorded is set by `tracked_object_names` in the env cfg:
-
-| Task | Default `tracked_object_names` |
+| Task | `tracked_object_names` |
 |---|---|
 | Cup stacking | `blue_cup`, `pink_cup` |
 | Cutlery arrangement | `fork`, `knife`, `plate` |
 | Toy blocks collection | `green_block`, `blue_block`, `red_block`, `storage_box` |
 
-Change the list on your env cfg (`env_cfg.tracked_object_names = [...]`) if you want other rigid objects recorded.
+Details of how the recorder captures the poses:
 
-### 2.2 The repository's LeRobot recorder
+- It skips the first 5 steps of every episode, so the first recorded frame is
+  about step 6. Objects spawned slightly above the table may have settled by
+  then; in tests they moved by a few millimetres, which does not matter for
+  coverage.
+- The pose in frame *t* is read after that frame's `env.step()`, while the
+  observation is read before it, so the pose is one simulation step (1/60 s)
+  later. Objects at rest do not move in that time.
+- Only successful episodes are saved, so the check counts the starting
+  positions of successful demonstrations.
 
-Record with the `LeRobotRecorderManager` from `simulator`, **not** the one from leisaac. It handles episodes the same way and also declares and writes the `object_pose.*` columns:
-
-```python
-# from leisaac.enhance.managers.lerobot_recorder_manager import LeRobotRecorderManager  # not this
-from simulator.utils.object_pose_recording import LeRobotRecorderManager
-
-env.recorder_manager = LeRobotRecorderManager(env_cfg.recorders, dataset_cfg, env)
-```
-
-The full recording loop is in [How to Record Episodes, section 2.1](how_to_record.md#21-use-the-repositorys-lerobotrecordermanager). The recorder raises a `ValueError` if `tracked_object_names` is empty.
-
-Things to know about this recorder (they come from leisaac, not from the coverage tool):
-
-- It only accepts `DatasetExportMode.EXPORT_SUCCEEDED_ONLY` (or its resume variant) and **discards episodes whose `success` term was false**.
-- It drops the first 5 steps of every episode, so frame 0 is about step 6. Objects spawned slightly above the table may have dropped onto it by then; in our test they shifted by a few millimetres sideways. That is fine for coverage.
-- The `object_pose.<name>` columns come from the scene state *after* the frame's `env.step()`, while `observation.state` and the images are from *before* it. So the object pose in frame t is one simulation step (1/60 s) later than the observation. Objects at rest don't move in that time, so the first frame's pose is still the episode's start pose.
-
-### 2.3 Quick self-test
-
-After recording a few episodes:
+A quick test after recording a few episodes:
 
 ```bash
 uv run python -c "import json; f=json.load(open('datasets/<repo_id>/meta/info.json'))['features']; print([k for k in f if k.startswith('object_pose.')])"
 ```
 
-You should see one key per tracked object. If the list is empty, the dataset was recorded with leisaac's recorder: fix the import and record again.
+The output lists one key per tracked object. An empty list means that the
+dataset was recorded with leisaac's recorder and has to be recorded again.
 
----
+## 3. Write the specification
 
-## 3. Write your spec
+**Required**
 
-A spec is a small text file ([Turtle](https://www.w3.org/TR/turtle/) format) that says, per object: *"the initial positions in my dataset should cover this rectangle, split into this grid, with at least this many episodes per cell."*
+A specification is a small text file in [Turtle](https://www.w3.org/TR/turtle/)
+format. For each object, it says: *"the initial positions in the dataset should
+cover this rectangle, split into this grid, with at least this many episodes
+per cell."*
 
 ### 3.1 Create the skeleton
 
@@ -116,14 +119,16 @@ uv run python scripts/verify_object_pose_coverage.py init \
     --out specs/my_coverage.ttl
 ```
 
-Before you have data, name the objects yourself:
+Before any data exists, the objects are named directly:
 
 ```bash
 uv run python scripts/verify_object_pose_coverage.py init \
     --objects blue_cup,pink_cup --out specs/my_coverage.ttl
 ```
 
-`init` never overwrites an existing file. The raw template is also at `packages/data_verification/src/data_verification/templates/object_pose_coverage_spec.ttl` if you prefer to copy it by hand (replace `OBJECT_NAME`).
+`init` never overwrites an existing file. The raw template is
+`packages/data_verification/src/data_verification/templates/object_pose_coverage_spec.ttl`;
+it can also be copied by hand, replacing `OBJECT_NAME`.
 
 ### 3.2 One object block
 
@@ -143,33 +148,50 @@ spec:blue_cup_coverage a cp:CoverageRequirement ;
 
 | Field | Meaning | Type |
 |---|---|---|
-| `cp:objectName` | Object to check; must match `object_pose.<name>` in the dataset | text in quotes (already filled) |
-| `cp:xMin`, `cp:xMax`, `cp:yMin`, `cp:yMax` | Rectangle, in metres, env-local frame, where you want initial positions covered | number, **no quotes** (`8.80`) |
-| `cp:gridX`, `cp:gridY` | Number of cells along x and along y | whole number, no quotes (`3`) |
-| `cp:minEpisodesPerCell` | Episodes needed in each cell | whole number, no quotes (`2`) |
+| `cp:objectName` | Object to check; matches `object_pose.<name>` in the dataset | Text in quotes (already filled) |
+| `cp:xMin`, `cp:xMax`, `cp:yMin`, `cp:yMax` | Rectangle, in metres and in the environment frame, where initial positions should be covered | Number, **no quotes** (`8.80`) |
+| `cp:gridX`, `cp:gridY` | Number of cells along x and along y | Whole number, no quotes (`3`) |
+| `cp:minEpisodesPerCell` | Episodes needed in each cell | Whole number, no quotes (`2`) |
 
-- Delete a block to stop checking that object. Copy a block to check another one.
-- Leave `cp:targetsAxis cp:ObjectPoseAxis` and `cp:forObject` as they are.
-- The `# Already in ...` line shows the range your dataset has now. It is information only; the rectangle you write should describe where you *want* coverage.
+- Deleting a block stops checking that object; copying a block checks another
+  one.
+- `cp:targetsAxis cp:ObjectPoseAxis` and `cp:forObject` stay as generated.
+- The `# Already in ...` comment shows the range that the dataset has now. It
+  is information only: the rectangle describes where coverage is *wanted*, so
+  copying the current range would hide exactly the gaps the check is meant to
+  find.
 
 ### 3.3 Choosing the values
 
-These are your decisions. Some questions that help:
+These values are the group's decision. The following questions help.
 
-**Rectangle (`xMin`..`yMax`)**
-- Where could the object plausibly start at test time? The public eval file shows one nominal pose per object (`init_state.pos`) and how it is randomized (`pose_range`); the test uses different poses. Look at the table, the robot's reach and the cameras' view.
-- Can the robot reach and grasp the object over the whole rectangle? Covering unreachable corners wastes collection time.
-- The rectangle is per object. Objects of the same task can have different rectangles.
+**Rectangle (`xMin` .. `yMax`)**
+
+- Where could the object plausibly start at test time? The public eval file
+  shows each object's nominal pose (`init_state.pos`) and its randomization
+  range (`pose_range`); the private test uses different poses. The table, the
+  robot's reach, and the camera views also limit the region.
+- Can the robot reach and grasp the object everywhere in the rectangle?
+  Covering unreachable corners wastes collection time.
+- The rectangle is set per object; objects of the same task can have different
+  rectangles.
 
 **Grid (`gridX`, `gridY`)**
-- Cell size = `(xMax - xMin) / gridX`. A useful scale is "how far can the object move before the grasp has to change?" For small objects that is a few centimetres; for large or forgiving objects more.
-- More cells show gaps in more detail but need more episodes: the minimum dataset size is `gridX × gridY × minEpisodesPerCell` per object.
+
+- Cell size = `(xMax - xMin) / gridX`. A useful scale is how far the object can
+  move before the grasp has to change: a few centimetres for small objects,
+  more for large or forgiving ones.
+- More cells show gaps in more detail but need more episodes: the minimum
+  dataset size is `gridX × gridY × minEpisodesPerCell` per object.
 
 **Minimum per cell (`minEpisodesPerCell`)**
-- `1` only says "at least one example exists here". Higher values ask for repeated examples in every region.
-- Check the budget: 3 × 3 cells × 3 episodes = 27 episodes per object, spread evenly. Random sampling needs more than that to fill every cell.
 
-**Example (values are illustrative only, not a recommendation):**
+- `1` only says that at least one example exists there. Higher values require
+  repeated examples in every region.
+- Budget: 3 × 3 cells × 3 episodes = 27 episodes per object if perfectly
+  spread. Random object placement needs more than that to fill every cell.
+
+**Example** (illustrative values, not a recommendation):
 
 ```turtle
     cp:xMin 0.40 ; cp:xMax 0.70 ;
@@ -178,11 +200,12 @@ These are your decisions. Some questions that help:
     cp:minEpisodesPerCell 2 .
 ```
 
-= a 30 cm × 30 cm square split into nine 10 cm cells, each needing 2 episodes.
-
----
+This is a 30 cm × 30 cm square split into nine 10 cm cells, each needing 2
+episodes.
 
 ## 4. Run the check and read the report
+
+**Required**
 
 ```bash
 uv run python scripts/verify_object_pose_coverage.py check \
@@ -209,70 +232,88 @@ RESULT: coverage spec NOT met
 
 How to read it:
 
-- **Grid:** each number is the number of episodes whose object started in that cell. `!` = below your minimum. Columns are x (`x0` = `xMin` side), rows are y, **+y at the top**.
-- **VIOLATION:** a requirement is not met. Each empty or thin cell is one line with its exact bounds. That is where to collect next.
-- **WARNING:** allowed but worth knowing. An initial position outside your rectangle does not count toward any cell. `[episode/30/...]` tells you which episode.
-- **ERROR:** the check could not run properly (missing column, TODO left in the spec, ...). See section 5.
-- **Every episode counts**, whether the attempt succeeded or failed, because coverage is about which starting scenes the dataset contains.
+- **Grid**: each number is the count of episodes whose object started in that
+  cell; `!` marks a count below the minimum. Columns are x (`x0` is the `xMin`
+  side), rows are y, with **+y at the top**.
+- **VIOLATION**: a requirement is not met. Each thin or empty cell is one line
+  with its exact bounds; these are the places to collect next.
+- **WARNING**: allowed but worth knowing. An initial position outside the
+  rectangle does not count toward any cell; `[episode/30/...]` names the
+  episode.
+- **ERROR**: the check could not run (missing column, `TODO` left in the
+  specification, ...). See [section 5](#5-troubleshooting).
 
 | Option | Effect |
 |---|---|
-| `--json report.json` | Full report (counts per cell, all findings) as JSON, for your own plots or scripts |
-| `--no-graph-out` | Do not write the RDF graph that SHACL validates. By default `check` writes it (your spec, the generated cells, every episode and initial placement) to `outputs/object_pose_coverage/<dataset>.ttl`, to inspect or query with SPARQL |
-| `--strict` | Treat warnings as failures |
-| `--extra-shapes my_rules.ttl` | Also run your own SHACL rules (section 7); repeatable |
+| `--json report.json` | Writes the full report (counts per cell, all findings) as JSON, for plots or scripts |
+| `--no-graph-out` | Skips writing the RDF graph that SHACL validates. By default `check` writes it (specification, generated cells, every episode and initial placement) to `outputs/object_pose_coverage/<dataset>.ttl`, for inspection or SPARQL queries |
+| `--strict` | Treats warnings as failures |
+| `--extra-shapes my_rules.ttl` | Also runs the group's own SHACL rules ([section 7](#7-how-it-works-rdf-owl-shacl)); repeatable |
 
-Exit code: `0` = spec met, `1` = not met or error. Use it in your own scripts, e.g. to stop collecting once coverage is reached.
-
----
+Exit code: `0` when the specification is met, `1` when it is not or when an
+error occurs. A collection script can use it, for example, to stop collecting
+once coverage is reached.
 
 ## 5. Troubleshooting
 
+**Background**
+
 | Message | Cause | Fix |
 |---|---|---|
-| `meta/info.json declares no 'object_pose.<name>' features` | Dataset recorded with leisaac's recorder instead of the repository's | Section 2.2; re-record |
-| `Dataset has no 'object_pose.<name>' column, which the spec requires` | Spec block for an object that was not recorded, or a typo in `cp:objectName` | Fix the name, delete the block, or add the object to `tracked_object_names` |
-| `Spec still has TODO values: ...` | Unfilled fields | Fill them in (section 3.2) |
+| `meta/info.json declares no 'object_pose.<name>' features` | Dataset recorded with leisaac's recorder instead of the repository's | Record again with the repository recorder ([How to Record Episodes §5.2](how_to_record.md#52-the-repositorys-recorder-and-object-poses)) |
+| `Dataset has no 'object_pose.<name>' column, which the spec requires` | Block for an object that was not recorded, or a typo in `cp:objectName` | Fix the name or delete the block |
+| `Spec still has TODO values: ...` | Unfilled fields | Fill them in ([section 3.2](#32-one-object-block)) |
 | `... must be a number without quotes, got "8.8"` | Quoted number | Write `8.8`, not `"8.8"` |
-| `... must be a whole number without quotes, got 2.5` | Fraction in `gridX`/`gridY`/`minEpisodesPerCell` | Use a whole number |
-| `Spec is not valid Turtle: ...` | Syntax error, usually a missing `;` or `.` | Compare with the template: `;` between fields of one block, `.` at the end of a block |
+| `... must be a whole number without quotes, got 2.5` | Fraction in `gridX`, `gridY`, or `minEpisodesPerCell` | Use a whole number |
+| `Spec is not valid Turtle: ...` | Syntax error, usually a missing `;` or `.` | Compare with the template: `;` between the fields of one block, `.` at the end of a block |
 | `Coverage region is empty` | `xMin >= xMax` or `yMin >= yMax` | Swap the values |
-| `episode(s) do not start at frame_index 0` | Dataset edited or written by another tool | Record with the repository recorder (section 2.2) |
-| `non-finite initial pose` | NaN/inf written as a pose (an object exploded or fell out of the scene) | Watch that episode; drop it or fix the reset |
-| Everything lands in one cell | Objects never moved between episodes | Randomize object poses on reset in your pipeline |
-
----
+| `episode(s) do not start at frame_index 0` | Dataset edited or written by another tool | Record with the repository recorder |
+| `non-finite initial pose` | NaN or infinity written as a pose (an object fell out of the scene) | Inspect that episode; drop it or fix the reset |
+| Every episode lands in one cell | Objects never moved between episodes | Check that the task's reset randomization is active |
 
 ## 6. What the check does not cover
 
-- **Only x and y position.** Orientation (yaw) and height are recorded but not checked.
-- **Each object separately.** It does not check combinations, e.g. "blue cup left *while* pink cup right", or the distance between objects.
-- **Only the first frame.** It says nothing about trajectory quality, grasp success or timing.
-- **Rectangles only.** For other shapes, use several requirements for the same object, or extend the rules (section 7).
+**Background**
 
-Good coverage raises the chance that your policy generalizes to new poses; it does not guarantee it.
+- **Only x and y position.** Orientation and height are recorded but not
+  checked.
+- **Each object separately.** Combinations ("blue cup left *while* pink cup
+  right") and distances between objects are not checked.
+- **Only the first frame.** Trajectory quality, grasp success, and timing are
+  not checked.
+- **Rectangles only.** Other shapes need several requirements for the same
+  object, or extra rules ([section 7](#7-how-it-works-rdf-owl-shacl)).
 
----
+Good coverage raises the chance that a policy generalizes to new poses; it
+does not guarantee it. Other factors can be added by following
+[Adding a New Dataset Coverage Factor](adding_coverage_factor.md).
 
 ## 7. How it works: RDF, OWL, SHACL
 
-You do not need this section to use the tool.
+**Background**
+
+This section is not needed to use the tool.
 
 | Piece | In one sentence | File (under `packages/data_verification/src/data_verification/`) |
 |---|---|---|
-| **RDF** | Data stored as `subject → predicate → object` facts, e.g. `episode/3/placement/blue_cup → cp:x → 8.91` | built from your dataset by `graph.py` |
+| **RDF** | Data stored as `subject → predicate → object` facts, e.g. `episode/3/placement/blue_cup → cp:x → 8.91` | Built from the dataset by `graph.py` |
 | **OWL** | The vocabulary: kinds of things (`Episode`, `ObjectPlacement`, `CoverageRequirement`, `CoverageCell`) and the properties linking them | `ontology/object_pose.ttl` |
-| **Your spec** | Your requirement, written as RDF in that vocabulary | your `.ttl` file |
-| **SHACL** | Rules: each rule picks nodes (every episode, every cell, ...) and states what must hold. The coverage rule is a SPARQL query counting initial placements inside each cell | `shapes/object_pose_coverage.ttl` |
+| **Specification** | The group's requirement, written as RDF in that vocabulary | The group's `.ttl` file |
+| **SHACL** | Rules: each rule selects nodes (every episode, every cell, ...) and states what must hold. The coverage rule is a SPARQL query that counts the initial placements inside each cell | `shapes/object_pose_coverage.ttl` |
 
 What `check` does:
 
-1. Loads your spec and splits each rectangle into `CoverageCell`s.
+1. Loads the specification and splits each rectangle into `CoverageCell`s.
 2. Converts each episode's first-frame positions into `ObjectPlacement` facts.
-3. Runs the SHACL rules over everything with [`pyshacl`](https://github.com/RDFLib/pySHACL).
-4. Prints each failed rule as one VIOLATION/WARNING line, plus the count grid.
+3. Runs the SHACL rules over everything with
+   [`pyshacl`](https://github.com/RDFLib/pySHACL).
+4. Prints each failed rule as one VIOLATION or WARNING line, plus the count
+   grid.
 
-To add your own rules (for example "initial z must be above the table"), write SHACL shapes in a separate `.ttl` file and pass it with `--extra-shapes`. The packaged shapes in `shapes/object_pose_coverage.ttl` are commented and are a good starting point. A minimal example:
+Additional rules (for example "the initial z must be above the table") are
+written as SHACL shapes in a separate `.ttl` file and passed with
+`--extra-shapes`. The packaged shapes in `shapes/object_pose_coverage.ttl` are
+commented and are a good starting point. A minimal example:
 
 ```turtle
 @prefix cp:  <http://taica.course/cp/ontology#> .
