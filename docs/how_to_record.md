@@ -4,7 +4,7 @@ This guide describes how students build the data collection pipeline for their
 task: a Python script that drives the simulated robot through demonstrations
 and saves them as a LeRobot v3 dataset. That dataset is later used to train
 the policy ([LeRobot Training Procedure](lerobot_training.md)) and is checked
-with the [object-pose coverage](object_pose_coverage.md) tool.
+with the [object-position coverage](object_position_coverage.md) tool.
 
 It extends steps 1 and 2 of [Getting Started](getting_started.md) and assumes
 that step 0 (setup) is complete, so that a shell inside the Isaac Lab container
@@ -63,7 +63,7 @@ contains, or imports, two parts:
    this part is given in this guide.
 
 The result is a LeRobot v3 dataset of successful demonstrations that contains
-the `object_pose.*` columns and has passed the checks in
+the `object_position.*` columns and has passed the checks in
 [section 9](#9-check-the-dataset). How many episodes to record, and which
 object positions they must cover, is the group's decision.
 
@@ -75,7 +75,7 @@ What the repository provides, and what students do with it:
 | Shared robot, camera, and action settings | `packages/simulator/src/simulator/tasks/template/single_arm_franka_cfg.py` | Read; may modify, aligned with rollout ([section 2.1](#21-modifying-the-environment-configuration)) |
 | LeRobot recorder | `packages/simulator/src/simulator/utils/lerobot_recorder.py` | Import and use; extend to record further verification factors ([Adding a Coverage Factor §4](adding_coverage_factor.md#4-record-the-factor-in-lerobot-v3)) |
 | Evaluation files and rollout | `eval/`, `scripts/rollout.py` | Use later for evaluation |
-| Coverage check | `scripts/verify_object_pose_coverage.py` | Run on every dataset |
+| Coverage check | `scripts/verify_object_position_coverage.py` | Run on every dataset |
 | Controller | none | **Implement** |
 | Collection entry point with the recording loop | none (template in [section 5.3](#53-the-collection-entry-point)) | **Implement** |
 
@@ -93,7 +93,7 @@ A recommended order of work:
 3. Write the collection entry point and record one or two test episodes into a
    new dataset ([section 5](#5-the-recorder-and-the-recording-loop) and
    [section 6](#6-run-the-collection-script)).
-4. Check the test dataset, including the `object_pose.*` columns and the
+4. Check the test dataset, including the `object_position.*` columns and the
    coverage tool's `init` step ([section 9](#9-check-the-dataset)).
 5. Record the full dataset and run all checks again.
 
@@ -101,8 +101,8 @@ A recommended order of work:
 
 Every environment configuration may be modified for data collection: the task
 configuration files, the shared template, or a new configuration class of the
-group's own. Examples are wider or narrower object-pose randomization, other
-lighting, extra or different object start poses, a stricter success check, or
+group's own. Examples are wider or narrower object-position randomization, other
+lighting, extra or different object start positions, a stricter success check, or
 a longer episode for recording. Such changes are part of the group's
 data-collection design and are reported with it.
 
@@ -131,12 +131,12 @@ evaluation, or runs with a different meaning:
 else may differ between recording and evaluation, but each difference is a
 distribution shift that the policy must bridge. The relevant values are
 compared side by side: the task configuration against the evaluation file
-`eval/<task>_eval.py` (object start poses and randomization ranges, lighting
+`eval/<task>_eval.py` (object start positions and randomization ranges, lighting
 range, robot start pose, `front` camera pose, success check, episode length).
 Recording a wider range than the evaluation file is usually helpful, because
-the private evaluation uses other poses. Recording a narrower range, a moved
+the private evaluation uses other positions. Recording a narrower range, a moved
 camera, or a different robot start pose usually hurts, and the coverage check
-([Object Pose Coverage](object_pose_coverage.md)) only measures what the
+([Object Position Coverage](object_position_coverage.md)) only measures what the
 specification asks for.
 
 
@@ -343,7 +343,7 @@ class MyStateMachine:
         self._episode_done = False
 
     def pre_step(self, env):
-        # Read randomized object poses here or in get_action().
+        # Read randomized object positions here or in get_action().
         pass
 
     def get_action(self, env):
@@ -372,9 +372,9 @@ class MyStateMachine:
 
 A suggested development order:
 
-1. List every scene object that the controller needs. Read the poses from
+1. List every scene object that the controller needs. Read the positions from
    `env.scene[name].data.root_pos_w` after each reset; never copy the initial
-   pose constants from the configuration file.
+   position constants from the configuration file.
 2. Implement one phase at a time: approach, grasp, transport, release,
    retreat, and verification. Bound every phase with a step counter.
 3. Test without recording (`--record` omitted,
@@ -460,7 +460,7 @@ Consequences that the recording loop has to respect (source:
    mounted from `datasets/<repo_id>` on the host. If the folder already
    exists, creating the dataset fails with `FileExistsError`.
 
-### 5.2 The repository's recorder and object poses
+### 5.2 The repository's recorder and object positions
 
 **Required**
 
@@ -474,7 +474,7 @@ from simulator.utils.lerobot_recorder import LeRobotRecorderManager       # use 
 [`lerobot_recorder.py`](../packages/simulator/src/simulator/utils/lerobot_recorder.py)
 defines a subclass of leisaac's `LeRobotRecorderManager`. It is the
 repository's base extension for data verification: it adds one verification
-factor, the object pose. A group that verifies further factors appends them to
+factor, the object position. A group that verifies further factors appends them to
 this module ([Adding a Coverage Factor §4](adding_coverage_factor.md#4-record-the-factor-in-lerobot-v3)),
 so that one recorder writes all verification columns. The two classes compare
 as follows:
@@ -483,26 +483,28 @@ as follows:
 |---|---|---|
 | Frame capture, skipped steps, keep/drop rule, `finalize()` | As in [section 5.1](#51-how-the-recorder-works) | Identical (inherited) |
 | Robot state, action, camera images, task text | Recorded | Recorded (identical) |
-| Pose of every task object (`object_pose.<name>`) | Not recorded | Recorded |
+| Position of every task object (`object_position.<name>`) | Not recorded | Recorded |
 | Usable for the coverage check | No | Yes |
 
-**Why object poses are recorded.** A policy can only imitate situations that
+**Why object positions are recorded.** A policy can only imitate situations that
 appear in its demonstrations. Every reset places the objects at a random
 position, and evaluation does the same. If a region of the table has few
 demonstrations, the policy has little to imitate there and is likely to fail.
-The [object-pose coverage check](object_pose_coverage.md) finds such regions:
+The [object-position coverage check](object_position_coverage.md) finds such regions:
 it reads where each object started in every episode, divides the table area
 into cells, and reports cells with too few episodes. Robot joint states and
 camera images do not state the object positions directly, so the positions are
 recorded as separate columns.
 
+Only the position is recorded, not the orientation, because position is the primary variable used to measure spatial coverage in the current experimental setup. Object orientations remain fixed across episodes, as randomizing them could cause objects to start in unstable configurations (e.g., tipped over) or fall off the table, requiring environment resets and additional simulation attempts. Since the orientation does not vary across episodes, it provides no additional coverage information ([Object Position Coverage §1](object_position_coverage.md#1-what-the-check-does-and-why)).
+
 **How they are recorded.** The recorder:
 
-- declares one `object_pose.<name>` column, float32 `(7,)` =
-  `[x, y, z, qw, qx, qy, qz]`, for every name in the task configuration's
+- declares one `object_position.<name>` column, float32 `(3,)` =
+  `[x, y, z]`, for every name in the task configuration's
   `tracked_object_names` (all scene objects of the three tasks are already
   listed there);
-- fills these columns in every frame with the object pose relative to the
+- fills these columns in every frame with the object position relative to the
   environment origin;
 - raises a `ValueError` when it is created for a task whose
   `tracked_object_names` is empty. This matters only for an Advanced Level
@@ -513,11 +515,11 @@ where every object started. The columns do not affect training or rollout:
 LeRobot policies use only the `observation.*` and `action*` columns as inputs
 and outputs.
 
-A dataset recorded with leisaac's original class has no object poses and
+A dataset recorded with leisaac's original class has no object positions and
 cannot be verified, so it must be recorded again. Writing frames with a custom
 LeRobot writer is not supported for the same reason.
 
-The object poses are read from the `states` buffer that Isaac Lab's
+The object positions are read from the `states` buffer that Isaac Lab's
 `ActionStateRecorderManagerCfg` fills. That configuration is the task default
 (`env_cfg.recorders`); the collection script keeps it and changes only its
 export mode.
@@ -656,7 +658,7 @@ The recorder builds the dataset columns from the environment, using
 | `observation.images.front` | 480×640×3 video | Front camera |
 | `observation.images.wrist` | 480×640×3 video | Wrist camera |
 | `task_index` | int64 | Index of the task text, see below |
-| `object_pose.<name>` | `(7,)` float32, names `x, y, z, qw, qx, qy, qz` | Pose of each `tracked_object_names` object, relative to the env origin ([section 5.2](#52-the-repositorys-recorder-and-object-poses)) |
+| `object_position.<name>` | `(3,)` float32, names `x, y, z` | Position of each `tracked_object_names` object, relative to the env origin ([section 5.2](#52-the-repositorys-recorder-and-object-positions)) |
 
 **Where the task text is stored.** Every frame is handed to LeRobot with the
 task text from the configuration's `task_description`. LeRobot does not repeat
@@ -752,7 +754,7 @@ existing episodes from a failed session.
    print(list(ds.features))
    ```
 
-   The feature list contains one `object_pose.<name>` entry per tracked
+   The feature list contains one `object_position.<name>` entry per tracked
    object.
 
 2. **Watch a few episodes** with the
@@ -761,21 +763,21 @@ existing episodes from a failed session.
    task, both cameras show the right view, and the state curves move when the
    arm moves.
 
-3. **Run the object-pose coverage check** on every dataset:
+3. **Run the object-position coverage check** on every dataset:
 
    ```bash
-   uv run python scripts/verify_object_pose_coverage.py init \
+   uv run python scripts/verify_object_position_coverage.py init \
        --dataset datasets/<hf_user>/cup-stacking-demos \
        --out specs/cup_stacking_coverage.ttl
    # Fill the TODO values in the generated Turtle file, then:
-   uv run python scripts/verify_object_pose_coverage.py check \
+   uv run python scripts/verify_object_position_coverage.py check \
        --dataset datasets/<hf_user>/cup-stacking-demos \
        --spec specs/cup_stacking_coverage.ttl
    ```
 
    These commands run on the host, from the repository root: `datasets/` on
    the host is the container's `~/.cache/huggingface/lerobot/`.
-   [Object Pose Coverage](object_pose_coverage.md) explains the report. The
+   [Object Position Coverage](object_position_coverage.md) explains the report. The
    check is a coverage diagnostic; it does not replace visual inspection or
    loading the dataset in LeRobot.
 
@@ -788,11 +790,11 @@ existing episodes from a failed session.
 | `FileExistsError` right at start | The dataset folder already exists | Choose a new `repo_id`, delete the old folder, or [resume](#8-recording-over-several-sessions) |
 | Recorder rejects the export mode | `env_cfg.recorders.dataset_export_mode` was not set before the recorder was created | Set it to `EXPORT_SUCCEEDED_ONLY` (or the resume variant) before creating the recorder |
 | Dataset will not load / Parquet footer error | `finalize()` never ran (crash, `kill -9`, closed terminal) | Keep `finalize()` in `finally`; stop with Ctrl+C; resume only a finalized dataset, and use a new repo id for a corrupted one |
-| Every attempt is reported as failed | `check_success(env)` returns `False`, or the controller ends the attempt too early | Print the object poses and compare them with the success check in [section 3](#3-the-task-configuration) |
+| Every attempt is reported as failed | `check_success(env)` returns `False`, or the controller ends the attempt too early | Print the object positions and compare them with the success check in [section 3](#3-the-task-configuration) |
 | Error or empty episode right after a saved one | The success state was not cleared after the reset | After every `env.reset()`, set the success term back to `False` (`set_success(env, False)`, [section 5.3](#53-the-collection-entry-point)) |
 | First frames show the previous episode's scene | The controller moved during the skipped steps | Hold still for at least 5 steps after each reset |
 | Camera errors / images missing | Started without `--enable_cameras` | Add the flag |
-| Missing `object_pose.*` features | leisaac's `LeRobotRecorderManager` was imported instead of the repository's | Import from `simulator.utils.lerobot_recorder` ([section 5.2](#52-the-repositorys-recorder-and-object-poses)) and record again |
+| Missing `object_position.*` features | leisaac's `LeRobotRecorderManager` was imported instead of the repository's | Import from `simulator.utils.lerobot_recorder` ([section 5.2](#52-the-repositorys-recorder-and-object-positions)) and record again |
 | `ValueError: ... tracked_object_names is empty` | The task configuration tracks no objects (only possible for a self-defined task) | Set `tracked_object_names` to the task's rigid objects |
 | `KeyError: '<object name>'` on the first recorded frame | `env_cfg.recorders` was replaced, so the `states` buffer is missing | Keep the default `ActionStateRecorderManagerCfg` and change only its export mode |
 | Keyboard does nothing | Running `--headless`, or the input adapter still waits for its start key | Run with the GUI and press the start key that the script defines |
@@ -805,7 +807,7 @@ existing episodes from a failed session.
 - [ ] Any configuration change keeps the rollout contract, and its differences from `eval/<task>_eval.py` are known and reported ([section 2.1](#21-modifying-the-environment-configuration)).
 - [ ] `num_envs=1` and `--enable_cameras`.
 - [ ] `env_cfg.use_joint_position_actions()` is called before the environment is created.
-- [ ] The controller reads object poses fresh every episode.
+- [ ] The controller reads object positions fresh every episode.
 - [ ] The controller holds still for at least 5 steps after each reset.
 - [ ] Each episode is a single attempt that ends shortly after the task is done.
 - [ ] The group's definition of "done" is stricter than, or equal to, the built-in check, and `check_success(env)` enforces it.
@@ -813,5 +815,5 @@ existing episodes from a failed session.
 - [ ] The recorder is imported from `simulator.utils.lerobot_recorder`, not from leisaac.
 - [ ] Dataset `fps` is 60 in every session.
 - [ ] `finalize()` runs at the end of every session.
-- [ ] `meta/info.json` lists one `object_pose.<name>` feature per tracked object.
-- [ ] The dataset loads in LeRobot, a few episodes were inspected visually, and the object-pose coverage check was run on it.
+- [ ] `meta/info.json` lists one `object_position.<name>` feature per tracked object.
+- [ ] The dataset loads in LeRobot, a few episodes were inspected visually, and the object-position coverage check was run on it.

@@ -15,7 +15,7 @@ PLACEHOLDER = "OBJECT_NAME"
 
 
 def template_text() -> str:
-    return files("data_verification").joinpath("templates", "object_pose_coverage_spec.ttl").read_text()
+    return files("data_verification").joinpath("templates", "object_position_coverage_spec.ttl").read_text()
 
 
 def render_spec(object_names: list[str], observed: DatasetPlacements | None = None, dataset_label: str = "") -> str:
@@ -47,7 +47,7 @@ def write_spec(path: str | Path, object_names: list[str], observed: DatasetPlace
 def _observed_note(name: str, observed: DatasetPlacements, dataset_label: str) -> str:
     points = [p for p in observed.placements if p.object_name == name and p.is_finite]
     if not points:
-        return f"# Not recorded in {dataset_label or 'the dataset'} (no object_pose.{name} values).\n"
+        return f"# Not recorded in {dataset_label or 'the dataset'} (no object_position.{name} values).\n"
     xs, ys = [p.x for p in points], [p.y for p in points]
     return (
         f"# Already in {dataset_label or 'the dataset'}: {len(points)} episode(s), initial "

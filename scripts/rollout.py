@@ -98,7 +98,7 @@ parser.add_argument(
     "--seed",
     type=int,
     default=42,
-    help="Seed of the environment. Drives object-pose and lighting randomization; keep fixed to replicate results.",
+    help="Seed of the environment. Drives object-position and lighting randomization; keep fixed to replicate results.",
 )
 parser.add_argument(
     "--episode_length_s",

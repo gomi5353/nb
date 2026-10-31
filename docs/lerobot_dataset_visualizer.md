@@ -74,8 +74,8 @@ account with read access. A link can be shared with the rest of the group.
 
 The visualizer reads the features from the dataset's `meta/info.json`; a
 feature that the recorder did not declare does not appear. The
-`object_pose.*` columns are not displayed; they are checked with
-[Object Pose Coverage](object_pose_coverage.md).
+`object_position.*` columns are not displayed; they are checked with
+[Object Position Coverage](object_position_coverage.md).
 
 ## 4. Common issues
 

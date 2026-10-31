@@ -15,7 +15,7 @@ The running example is the cup-stacking task:
 - [`cup_stacking/__init__.py`](../packages/simulator/src/simulator/tasks/cup_stacking/__init__.py):
   its registration.
 - [`utils/domain_randomization.py`](../packages/simulator/src/simulator/utils/domain_randomization.py):
-  the reset events that randomize object poses and lighting.
+  the reset events that randomize object positions and lighting.
 
 Every section starts with one of two labels: **Required** (something students
 must do or follow) or **Background** (explanation without work items).
@@ -109,7 +109,7 @@ class CupStackingSceneCfg(SingleArmFrankaTaskSceneCfg):
 ```
 
 - The attribute name (`blue_cup`) becomes the object's scene name, used as
-  `env.scene["blue_cup"]` and as the dataset column `object_pose.blue_cup`.
+  `env.scene["blue_cup"]` and as the dataset column `object_position.blue_cup`.
 - `{ENV_REGEX_NS}` expands to each environment's own prim path. Per-environment
   objects use it; only assets shared by all environments use `/World/...`.
 - Asset paths are built from `simulator.ASSETS_ROOT`
@@ -189,7 +189,7 @@ class CupStackingEnvCfg(SingleArmFrankaTaskEnvCfg):
 | Setting | Purpose |
 |---|---|
 | `task_description` | Short sentence describing the goal. It is saved with every episode as the task text ([How to Record Episodes §5.4](how_to_record.md#54-what-each-frame-contains)) and is the instruction for language-conditioned policies. |
-| `tracked_object_names` | Objects whose poses the recorder writes as `object_pose.<name>` for data verification. The recorder refuses to start when it is empty. |
+| `tracked_object_names` | Objects whose positions the recorder writes as `object_position.<name>` for data verification. The recorder refuses to start when it is empty. |
 | `episode_length_s` | Time a policy gets per evaluation episode. |
 | `env_spacing` | Distance between parallel environments; larger than the scene. |
 | `scene.robot.init_state` | Robot base pose and home joint angles. |
@@ -349,7 +349,7 @@ reproducibility documentation.
 - [ ] Success check uses `env.scene.env_origins` and returns a `(num_envs,)` boolean tensor.
 - [ ] `task_description`, `tracked_object_names`, and `episode_length_s` are set.
 - [ ] `__post_init__` calls `super().__post_init__()` first.
-- [ ] Reset randomization of object poses (and lighting) is registered.
+- [ ] Reset randomization of object positions (and lighting) is registered.
 - [ ] `gym.register` in the task's `__init__.py`, and the import line in `simulator/tasks/__init__.py`.
 - [ ] `parse_env_cfg(<task id>)` loads the class from the new file.
 - [ ] The scene runs, the cameras show the workspace, and the success check behaves as intended.

@@ -1,14 +1,17 @@
 """LeRobot recorder with extra columns for offline data verification.
 
 This is the repository's base extension of leisaac's ``LeRobotRecorderManager``.
-It adds one verification factor, the object pose; groups that verify further
+It adds one verification factor, the object position; groups that verify further
 factors append them here (see ``docs/adding_coverage_factor.md``).
 
-Every tracked object gets its own dataset column ``object_pose.<name>``:
-float32 ``(7,)`` = ``[x, y, z, qw, qx, qy, qz]``, position relative to the env
-origin, quaternion in IsaacLab ``(w, x, y, z)`` order.
+Every tracked object gets its own dataset column ``object_position.<name>``:
+float32 ``(3,)`` = ``[x, y, z]``, position relative to the env origin, metres.
+Orientation is not recorded: the tasks randomize only object positions and keep
+each object's start rotation fixed (a random rotation can tip an object off the
+table, and the reset has to be retried), so the orientation carries no
+information about coverage.
 
-The ``object_pose.`` prefix is deliberate. LeRobot turns every ``observation.*``
+The ``object_position.`` prefix is deliberate. LeRobot turns every ``observation.*``
 key and every ``action*`` key into a policy input/output
 (``lerobot.datasets.utils.dataset_to_policy_features``); any other column is
 ignored by policies. These columns are therefore safe for training and rollout,
@@ -17,12 +20,12 @@ non-``observation.`` prefix, such as ``factor.<name>``, for the same reason.
 
 A factor needs two additions: its feature spec in ``build_with_factors`` below,
 and its per-frame value in ``SingleArmFrankaTaskEnvCfg.build_lerobot_frame``
-(``tasks/template/single_arm_franka_cfg.py``), next to the object poses.
+(``tasks/template/single_arm_franka_cfg.py``), next to the object positions.
 
 Record with ``LeRobotRecorderManager`` from this module, not leisaac's original
 class, which writes no verification columns.
 
-Keep ``OBJECT_POSE_KEY_PREFIX`` / ``OBJECT_POSE_NAMES`` in sync with
+Keep ``OBJECT_POSITION_KEY_PREFIX`` / ``OBJECT_POSITION_NAMES`` in sync with
 ``data_verification.dataset``.
 """
 
@@ -36,36 +39,36 @@ import numpy as np
 if TYPE_CHECKING:
     from isaaclab.utils.datasets.episode_data import EpisodeData
 
-OBJECT_POSE_KEY_PREFIX = "object_pose."
-OBJECT_POSE_NAMES = ["x", "y", "z", "qw", "qx", "qy", "qz"]
+OBJECT_POSITION_KEY_PREFIX = "object_position."
+OBJECT_POSITION_NAMES = ["x", "y", "z"]
 
 
-def object_pose_features(object_names: list[str]) -> dict[str, dict]:
-    """LeRobot feature specs for the ``object_pose.<name>`` columns."""
+def object_position_features(object_names: list[str]) -> dict[str, dict]:
+    """LeRobot feature specs for the ``object_position.<name>`` columns."""
     return {
-        f"{OBJECT_POSE_KEY_PREFIX}{name}": {
+        f"{OBJECT_POSITION_KEY_PREFIX}{name}": {
             "dtype": "float32",
-            "shape": (len(OBJECT_POSE_NAMES),),
-            "names": list(OBJECT_POSE_NAMES),
+            "shape": (len(OBJECT_POSITION_NAMES),),
+            "names": list(OBJECT_POSITION_NAMES),
         }
         for name in object_names
     }
 
 
-def object_poses_from_episode(episode_data: EpisodeData, dataset_features: dict) -> dict[str, np.ndarray]:
-    """Latest object poses from an IsaacLab ``EpisodeData`` buffer.
+def object_positions_from_episode(episode_data: EpisodeData, dataset_features: dict) -> dict[str, np.ndarray]:
+    """Latest object positions from an IsaacLab ``EpisodeData`` buffer.
 
     Reads the ``states`` entry written by ``PostStepStatesRecorder`` (part of
-    ``ActionStateRecorderManagerCfg``), which stores env-relative root poses.
-    Only columns declared in ``dataset_features`` are returned.
+    ``ActionStateRecorderManagerCfg``), which stores env-relative root poses
+    ``[x, y, z, qw, qx, qy, qz]``; only the position is kept. Only columns declared in ``dataset_features`` are returned.
     """
     rigid_states = episode_data._data.get("states", {}).get("rigid_object", {})
     frame = {}
     for key in dataset_features:
-        if not key.startswith(OBJECT_POSE_KEY_PREFIX):
+        if not key.startswith(OBJECT_POSITION_KEY_PREFIX):
             continue
-        name = key[len(OBJECT_POSE_KEY_PREFIX) :]
-        frame[key] = rigid_states[name]["root_pose"][-1].cpu().numpy().astype(np.float32)
+        name = key[len(OBJECT_POSITION_KEY_PREFIX) :]
+        frame[key] = rigid_states[name]["root_pose"][-1][:3].cpu().numpy().astype(np.float32)
     return frame
 
 
@@ -86,14 +89,14 @@ def _make_recorder_manager_class():
             object_names = list(getattr(env.cfg, "tracked_object_names", []))
             if not object_names:
                 raise ValueError(
-                    f"{type(env.cfg).__name__}.tracked_object_names is empty: no object poses would be recorded "
+                    f"{type(env.cfg).__name__}.tracked_object_names is empty: no object positions would be recorded "
                     "and the dataset could not be verified. List the task's rigid objects there."
                 )
             base_build = leisaac_recorder.build_feature_from_env
 
             def build_with_factors(env, dataset_cfg):
                 features = base_build(env, dataset_cfg)
-                features.update(object_pose_features(object_names))
+                features.update(object_position_features(object_names))
                 # Append the feature specs of further verification factors here.
                 return features
 

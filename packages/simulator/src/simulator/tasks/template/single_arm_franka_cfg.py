@@ -20,7 +20,7 @@ from leisaac.utils.env_utils import dynamic_reset_gripper_effort_limit_sim
 
 from simulator.assets.robots.franka import FRANKA_PANDA_CFG
 from simulator import FRANKA_JOINT_NAMES
-from simulator.utils.lerobot_recorder import object_poses_from_episode
+from simulator.utils.lerobot_recorder import object_positions_from_episode
 
 from . import mdp
 
@@ -178,7 +178,7 @@ class SingleArmFrankaTaskEnvCfg(ManagerBasedRLEnvCfg):
     default_feature_joint_names: list[str] = MISSING
     task_description: str = MISSING
     tracked_object_names: list[str] = []
-    """Rigid objects recorded as ``object_pose.<name>`` dataset columns for data verification."""
+    """Rigid objects recorded as ``object_position.<name>`` dataset columns for data verification."""
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -236,5 +236,5 @@ class SingleArmFrankaTaskEnvCfg(ManagerBasedRLEnvCfg):
                 continue
             camera_key = frame_key.split(".")[-1]
             frame[frame_key] = obs_data[camera_key][-1].cpu().numpy()
-        frame.update(object_poses_from_episode(episode_data, dataset_cfg.features))
+        frame.update(object_positions_from_episode(episode_data, dataset_cfg.features))
         return frame

@@ -19,7 +19,7 @@ diagnosis) and links to the detailed guides below.
 | 0. Set up the machine | Host and container | [Getting Started §3](docs/getting_started.md#3-step-0-set-up-the-machine) |
 | 1. Choose a task | – | [Getting Started §4](docs/getting_started.md#4-step-1-choose-a-task) |
 | 2. Record demonstrations with the group's own controller | Isaac Lab container | [How to Record Episodes](docs/how_to_record.md) |
-| 3. Inspect and verify the dataset | Host | [Dataset Visualizer](docs/lerobot_dataset_visualizer.md), [Object Pose Coverage](docs/object_pose_coverage.md) |
+| 3. Inspect and verify the dataset | Host | [Dataset Visualizer](docs/lerobot_dataset_visualizer.md), [Object Position Coverage](docs/object_position_coverage.md) |
 | 4. Train a policy | Host | [LeRobot Training](docs/lerobot_training.md) |
 | 5. Evaluate the policy | Isaac Lab container | [Rollout](docs/rollout.md) |
 | 6. Diagnose and iterate | Host | [Getting Started §9](docs/getting_started.md#9-step-6-diagnose-and-iterate) |
@@ -31,7 +31,7 @@ diagnosis) and links to the detailed guides below.
 | [Getting Started](docs/getting_started.md) | End-to-end walkthrough, key terms, setup, repository layout |
 | [How to Record Episodes](docs/how_to_record.md) | Task configurations, controller, recorder, collection-script template |
 | [LeRobot Dataset Visualizer](docs/lerobot_dataset_visualizer.md) | Inspecting recorded episodes |
-| [Object Pose Coverage](docs/object_pose_coverage.md) | Writing a coverage requirement and running the check |
+| [Object Position Coverage](docs/object_position_coverage.md) | Writing a coverage requirement and running the check |
 | [LeRobot Training](docs/lerobot_training.md) | Training flags, multi-GPU, checkpoint layout |
 | [Rollout](docs/rollout.md) | Rollout flags, eval files, policy input and output contract |
 | [Adding a New Task](docs/adding_new_task.md) | Advanced Level: writing and registering an own task |

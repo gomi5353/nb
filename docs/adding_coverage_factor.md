@@ -5,7 +5,7 @@ Examples are lighting, camera viewpoint, object orientation, appearance, backgro
 extends step 6 of [Getting Started](getting_started.md).
 
 It assumes familiarity with the complete worked example in
-[Object Pose Coverage](object_pose_coverage.md).
+[Object Position Coverage](object_position_coverage.md).
 
 Every section starts with one of two labels: **Required** (something that an
 extension must do) or **Background** (explanation without work items).
@@ -27,7 +27,7 @@ requirement.
 For example, "light intensity must be finite" is a rule. "Each of three
 lighting ranges must contain at least five episodes" is a coverage requirement.
 A rule alone needs no code: it is a SHACL file passed with `--extra-shapes`
-([Object Pose Coverage §7](object_pose_coverage.md#7-how-it-works-rdf-owl-shacl)).
+([Object Position Coverage §7](object_position_coverage.md#7-how-it-works-rdf-owl-shacl)).
 The rest of this guide is about coverage factors.
 
 ## 2. Write a factor contract first
@@ -96,9 +96,9 @@ recover a factor that was never recorded in the dataset.
 The repository's `LeRobotRecorderManager` in
 [`lerobot_recorder.py`](../packages/simulator/src/simulator/utils/lerobot_recorder.py)
 is the base for every verification factor: it already adds the
-`object_pose.*` columns, and a new factor is appended next to them
-([How to Record Episodes §5.2](how_to_record.md#52-the-repositorys-recorder-and-object-poses)).
-Recording continues with that class, so the object poses stay in the dataset
+`object_position.*` columns, and a new factor is appended next to them
+([How to Record Episodes §5.2](how_to_record.md#52-the-repositorys-recorder-and-object-positions)).
+Recording continues with that class, so the object positions stay in the dataset
 next to the new factor.
 
 1. Declare the feature in the recorder's feature dictionary
@@ -115,7 +115,7 @@ next to the new factor.
 2. Read the value from the environment.
 3. Add it in `build_lerobot_frame()` in
    [`single_arm_franka_cfg.py`](../packages/simulator/src/simulator/tasks/template/single_arm_franka_cfg.py),
-   next to the object poses, at the same simulation step as the other frame
+   next to the object positions, at the same simulation step as the other frame
    values:
 
    ```python
@@ -154,7 +154,7 @@ The reader:
 4. Applies the aggregation from the contract.
 5. Reports missing, null, `NaN`, or infinite values with episode numbers.
 
-Parquet row order is not guaranteed. The object-pose reader sorts by
+Parquet row order is not guaranteed. The object-position reader sorts by
 `episode_index` and `frame_index` before selecting the initial value.
 
 ## 6. Describe the factor with RDF and OWL
@@ -232,7 +232,7 @@ meant to detect.
 
 `expand_cells()` in
 [`graph.py`](../packages/data_verification/src/data_verification/graph.py) turns a
-two-dimensional object-pose region into cells. The extension adds an
+two-dimensional object-position region into cells. The extension adds an
 equivalent expansion function:
 
 - numeric factor: intervals;
@@ -248,7 +248,7 @@ check:
 - at least the required number of episodes in every bin;
 - values outside the required domain.
 
-[`object_pose_coverage.ttl`](../packages/data_verification/src/data_verification/shapes/object_pose_coverage.ttl)
+[`object_position_coverage.ttl`](../packages/data_verification/src/data_verification/shapes/object_position_coverage.ttl)
 is the SPARQL counting example. Numeric bins use `[min, max)` and include the
 upper edge only in the final bin; otherwise one episode may be counted twice.
 
@@ -256,7 +256,7 @@ upper edge only in the final bin; otherwise one episode may be counted twice.
 
 **Required**
 
-[`verify_object_pose_coverage.py`](../scripts/verify_object_pose_coverage.py) is
+[`verify_object_position_coverage.py`](../scripts/verify_object_position_coverage.py) is
 the example; a distinct factor gets its own command:
 
 ```bash
@@ -284,7 +284,7 @@ units, aggregations, and boundary semantics.
 **Required**
 
 Tests use synthetic LeRobot v3 fixtures as in
-[`test_object_pose_coverage.py`](../tests/test_object_pose_coverage.py) and cover
+[`test_object_position_coverage.py`](../tests/test_object_position_coverage.py) and cover
 at least:
 
 1. Every bin meets the minimum.

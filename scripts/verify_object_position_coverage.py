@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Check how well a LeRobot dataset covers object initial poses, against your own spec.
+"""Check how well a LeRobot dataset covers object initial positions, against your own spec.
 
 Reads only meta/info.json and data/**/*.parquet (no simulator, no videos).
-Every episode counts, successful or failed. Guide: docs/object_pose_coverage.md
+Every episode counts, successful or failed. Guide: docs/object_position_coverage.md
 
-  # 1. Create a spec skeleton (one block per object_pose.* column in the dataset)
-  uv run python scripts/verify_object_pose_coverage.py init \\
+  # 1. Create a spec skeleton (one block per object_position.* column in the dataset)
+  uv run python scripts/verify_object_position_coverage.py init \\
       --dataset datasets/<repo_id> --out specs/my_coverage.ttl
 
   # 2. Replace every "TODO" in the spec with your own numbers, then check
-  uv run python scripts/verify_object_pose_coverage.py check \\
+  uv run python scripts/verify_object_position_coverage.py check \\
       --dataset datasets/<repo_id> --spec specs/my_coverage.ttl
 """
 
@@ -20,10 +20,10 @@ import json
 import sys
 from pathlib import Path
 
-from data_verification import format_report, verify_object_pose_coverage, write_spec
+from data_verification import format_report, verify_object_position_coverage, write_spec
 from data_verification.dataset import DatasetError, read_initial_placements
 
-GRAPH_DIR = Path("outputs/object_pose_coverage")
+GRAPH_DIR = Path("outputs/object_position_coverage")
 
 
 def cmd_init(args: argparse.Namespace) -> int:
@@ -39,7 +39,7 @@ def cmd_init(args: argparse.Namespace) -> int:
     elif observed is not None:
         names = observed.object_names
     else:
-        print("ERROR  pass --dataset (objects taken from its object_pose.* columns) or --objects", file=sys.stderr)
+        print("ERROR  pass --dataset (objects taken from its object_position.* columns) or --objects", file=sys.stderr)
         return 1
     try:
         path = write_spec(args.out, names, observed, dataset_label=args.dataset.name if args.dataset else "")
@@ -53,7 +53,7 @@ def cmd_init(args: argparse.Namespace) -> int:
 
 def cmd_check(args: argparse.Namespace) -> int:
     graph_out = None if args.no_graph_out else GRAPH_DIR / f"{args.dataset.resolve().name}.ttl"
-    report = verify_object_pose_coverage(args.dataset, args.spec, extra_shapes=args.extra_shapes, graph_out=graph_out)
+    report = verify_object_position_coverage(args.dataset, args.spec, extra_shapes=args.extra_shapes, graph_out=graph_out)
     print(format_report(report))
     if graph_out is not None:
         print(f"Graph written to {graph_out}")

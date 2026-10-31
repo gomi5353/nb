@@ -1,4 +1,4 @@
-# SHACL rules for object pose coverage.
+# SHACL rules for object position coverage.
 #
 # Severity:
 #   sh:Violation - dataset fails verification (malformed data, uncovered cell)
@@ -25,7 +25,7 @@ cp:EpisodeShape a sh:NodeShape ;
         sh:datatype xsd:integer ; sh:minCount 1 ; sh:maxCount 1 ;
     ] ;
     sh:sparql [
-        sh:message "Episode has no initial pose for required object '{?name}'" ;
+        sh:message "Episode has no initial position for required object '{?name}'" ;
         sh:prefixes cp: ;
         sh:select """
             SELECT $this ?name WHERE {
@@ -36,7 +36,7 @@ cp:EpisodeShape a sh:NodeShape ;
         """ ;
     ] ;
     sh:sparql [
-        sh:message "Episode has more than one initial pose for object '{?name}'" ;
+        sh:message "Episode has more than one initial position for object '{?name}'" ;
         sh:prefixes cp: ;
         sh:select """
             SELECT $this ?name WHERE {
@@ -62,7 +62,7 @@ cp:ObjectPlacementRegionShape a sh:NodeShape ;
     sh:targetClass cp:ObjectPlacement ;
     sh:severity sh:Warning ;
     sh:sparql [
-        sh:message "Initial pose of '{?name}' at ({?x}, {?y}) is outside the required region; it does not count toward coverage" ;
+        sh:message "Initial position of '{?name}' at ({?x}, {?y}) is outside the required region; it does not count toward coverage" ;
         sh:prefixes cp: ;
         sh:select """
             SELECT $this ?name ?x ?y WHERE {
@@ -80,7 +80,7 @@ cp:ObjectPlacementRegionShape a sh:NodeShape ;
 cp:CoverageRequirementShape a sh:NodeShape ;
     sh:targetClass cp:CoverageRequirement ;
     sh:property [ sh:path cp:forObject ; sh:class cp:TaskObject ; sh:minCount 1 ; sh:maxCount 1 ] ;
-    sh:property [ sh:path cp:targetsAxis ; sh:hasValue cp:ObjectPoseAxis ] ;
+    sh:property [ sh:path cp:targetsAxis ; sh:hasValue cp:ObjectPositionAxis ] ;
     sh:property [ sh:path cp:xMin ; sh:minCount 1 ; sh:maxCount 1 ] ;
     sh:property [ sh:path cp:xMax ; sh:minCount 1 ; sh:maxCount 1 ] ;
     sh:property [ sh:path cp:yMin ; sh:minCount 1 ; sh:maxCount 1 ] ;

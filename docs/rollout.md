@@ -23,10 +23,10 @@ something goes wrong, for example an invalid flag value, it prints the error
 and exits with a non-zero code.
 
 The evaluation task files in `eval/` define the same tasks as the recording
-task ids, with the evaluation's own nominal object poses, randomization
+task ids, with the evaluation's own nominal object positions, randomization
 ranges, and episode length. The final ranking uses a separate private
-configuration with different poses, so a policy that only works on the public
-file's exact poses is not enough.
+configuration with different object positions, so a policy that only works on
+the public file's exact positions is not enough.
 
 Rollout never reads the recording task configuration (`packages/simulator/src/simulator/tasks/<task>/<task>_env_cfg.py`). A dataset recorded under a modified configuration must still produce a policy that
 fits [section 4](#4-policy-input-and-output-contract)
@@ -84,7 +84,7 @@ python scripts/rollout.py \
 | `--enable_cameras` | Enables camera rendering. Required, because the policy needs images. |
 | `--eval_rounds` | Number of evaluation episodes. `0` (the default) runs without a time limit until success or a manual reset. |
 | `--episode_length_s` | Episode length in seconds. By default the task's graded length is used; the value in use is printed at start. |
-| `--seed` | Seed of the object-pose and lighting randomization (default `42`). A fixed seed compares policies on the same episodes. |
+| `--seed` | Seed of the object-position and lighting randomization (default `42`). A fixed seed compares policies on the same episodes. |
 | `--num_envs` | Number of environments simulated in parallel; each round evaluates this many episodes at once. |
 | `--headless` | Runs without the GUI window. |
 
@@ -95,7 +95,7 @@ python scripts/rollout.py \
 Rollout feeds the policy exactly the features below and expects the action
 below. A checkpoint submitted for evaluation must use only these input
 features and predict only this output. The dataset may contain other columns
-(for example `object_pose.*`); LeRobot ignores them because they are neither
+(for example `object_position.*`); LeRobot ignores them because they are neither
 `observation.*` nor `action`.
 
 | Key | Direction | dtype | Shape | Meaning |

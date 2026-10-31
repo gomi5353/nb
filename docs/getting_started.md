@@ -24,10 +24,10 @@ LeRobot, and evaluate the policy in the simulator.
 | [0. Set up](#3-step-0-set-up-the-machine) | Install the software and start the simulator container | Host and container | Working environments | This guide |
 | [1. Choose a task](#4-step-1-choose-a-task) | Select one of the three predefined tasks | – | Task id | [How to Record Episodes §3](how_to_record.md#3-the-task-configuration) |
 | [2. Record](#5-step-2-record-demonstrations) | Write a controller and a collection script, record demonstrations | Isaac Lab container | LeRobot v3 dataset | [How to Record Episodes](how_to_record.md) |
-| [3. Inspect and verify](#6-step-3-inspect-and-verify-the-dataset) | Look at the episodes and check object-pose coverage | Host | Coverage report | [Dataset Visualizer](lerobot_dataset_visualizer.md), [Object Pose Coverage](object_pose_coverage.md) |
+| [3. Inspect and verify](#6-step-3-inspect-and-verify-the-dataset) | Look at the episodes and check object-position coverage | Host | Coverage report | [Dataset Visualizer](lerobot_dataset_visualizer.md), [Object Position Coverage](object_position_coverage.md) |
 | [4. Train](#7-step-4-train-a-policy) | Train a policy on the dataset | Host | Policy checkpoint | [LeRobot Training](lerobot_training.md) |
 | [5. Evaluate](#8-step-5-evaluate-the-policy) | Run the policy in the simulator | Isaac Lab container | Success rate | [Rollout](rollout.md) |
-| [6. Diagnose and iterate](#9-step-6-diagnose-and-iterate) | Relate failures to gaps in the data, then collect again | Host | Next round of data | [Object Pose Coverage](object_pose_coverage.md), [Adding a Coverage Factor](adding_coverage_factor.md) |
+| [6. Diagnose and iterate](#9-step-6-diagnose-and-iterate) | Relate failures to gaps in the data, then collect again | Host | Next round of data | [Object Position Coverage](object_position_coverage.md), [Adding a Coverage Factor](adding_coverage_factor.md) |
 
 The steps form a loop rather than a single pass: a failed evaluation usually
 leads back to step 2 with a better-targeted collection.
@@ -61,7 +61,7 @@ recording: [Adding a New Task](adding_new_task.md).
 | Episode | One attempt at the task, from one `env.reset()` to the next. |
 | Data-collection controller (short: controller) | The code that decides the robot's action at every step while demonstrations are recorded, for example a scripted state machine or keyboard teleoperation. It plays the expert that the policy imitates. It does not mean the robot's low-level joint controller. |
 | Collection entry point (collection script) | The Python script that students write and run to record a dataset. It starts the simulator, creates the environment and the recorder, and runs the controller in a loop. |
-| LeRobot recorder | The repository's `LeRobotRecorderManager`. It is attached to the environment and saves every successful episode, including the object poses that data verification needs. |
+| LeRobot recorder | The repository's `LeRobotRecorderManager`. It is attached to the environment and saves every successful episode, including the object positions that data verification needs. |
 | Dataset | The recorded episodes of one task, stored in the LeRobot v3 format: per-frame numbers in Parquet tables, camera images as MP4 videos, and metadata in `meta/`. |
 | Policy | The neural network trained on the dataset. It maps camera images and joint states to robot actions. |
 | Checkpoint | A saved policy: its weights, configuration, and normalization statistics. |
@@ -177,7 +177,7 @@ Other `make` targets:
 | `packages/data_verification/` | The coverage checker (dataset reader, RDF graph builder, OWL ontology, SHACL rules, specification template). |
 | `eval/` | Public evaluation task files, one per task, used by rollout. |
 | `scripts/rollout.py` | Runs a trained policy in the simulator and reports the success rate. |
-| `scripts/verify_object_pose_coverage.py` | Command-line interface of the coverage check. |
+| `scripts/verify_object_position_coverage.py` | Command-line interface of the coverage check. |
 | `tests/` | Host-side tests (`make test`). |
 | `dependencies/IsaacLab/` | Isaac Lab as a Git submodule. Not edited. |
 | `Dockerfile`, `Makefile` | The container image and the commands that build and launch it. |
@@ -199,7 +199,7 @@ Each group works on one of three predefined tasks:
 
 The task id names the environment used for recording. The eval file defines
 the environment used for rollout: the same task with the evaluation's own
-object poses and randomization. The episode length is the time a policy gets
+object positions and randomization. The episode length is the time a policy gets
 during evaluation.
 
 Groups may modify any environment configuration for recording, for example
@@ -223,7 +223,7 @@ Students write a **collection entry point**: one Python script containing a
 data-collection controller and a recording loop. The loop connects the
 controller to the Isaac Lab environment and to the repository's
 `LeRobotRecorderManager`. leisaac's original recorder must not be used,
-because only the repository's recorder also stores each object's pose, which
+because only the repository's recorder also stores each object's position, which
 step 3 needs. The recorder keeps only the episodes that the task's success
 check accepts.
 
@@ -252,20 +252,20 @@ Before training, every dataset is checked in two ways, on the host:
 1. **Visual inspection.** A few episodes are watched with the
    [LeRobot Dataset Visualizer](lerobot_dataset_visualizer.md), to confirm
    that the camera views, the motion, and the episode boundaries are correct.
-2. **Object-pose coverage check.** The group writes a short requirement file
+2. **Object-position coverage check.** The group writes a short requirement file
    that states which region of the table the initial object positions must
    cover, how finely to divide it, and how many episodes each cell needs. The
    check then reports the cells with too few episodes:
 
    ```bash
-   uv run python scripts/verify_object_pose_coverage.py init \
+   uv run python scripts/verify_object_position_coverage.py init \
        --dataset datasets/${HF_USER}/cup-stacking-demos --out specs/cup_stacking.ttl
    # fill in the TODO values, then:
-   uv run python scripts/verify_object_pose_coverage.py check \
+   uv run python scripts/verify_object_position_coverage.py check \
        --dataset datasets/${HF_USER}/cup-stacking-demos --spec specs/cup_stacking.ttl
    ```
 
-   [Object Pose Coverage](object_pose_coverage.md) explains how to choose the
+   [Object Position Coverage](object_position_coverage.md) explains how to choose the
    values and how to read the report.
 
 Running the check is required for every dataset. Its values are the group's
@@ -349,7 +349,7 @@ can select it from the STAR-Gen taxonomy or another paper and follow
 |---|---|---|
 | [How to Record Episodes](how_to_record.md) | Steps 1–2 | Task configurations, controller, recorder, collection-script template, dataset checks |
 | [LeRobot Dataset Visualizer](lerobot_dataset_visualizer.md) | Step 3 | Inspecting episodes in the browser or locally |
-| [Object Pose Coverage](object_pose_coverage.md) | Steps 3 and 6 | Writing the coverage requirement, running the check, reading the report |
+| [Object Position Coverage](object_position_coverage.md) | Steps 3 and 6 | Writing the coverage requirement, running the check, reading the report |
 | [LeRobot Training](lerobot_training.md) | Step 4 | Training flags, multi-GPU, checkpoint layout, upload |
 | [Rollout](rollout.md) | Step 5 | Rollout flags, eval files, policy input and output contract |
 | [Adding a New Task](adding_new_task.md) | Step 1, Advanced Level | Writing, registering, and testing a new task configuration |

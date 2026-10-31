@@ -1,4 +1,4 @@
-"""Object pose coverage verification: build the graph, run SHACL, summarize."""
+"""Object position coverage verification: build the graph, run SHACL, summarize."""
 
 from __future__ import annotations
 
@@ -141,12 +141,12 @@ def build_verification_graph(dataset_root: str | Path, spec: str | Path) -> tupl
         report.errors.append("Dataset contains no episodes")
     required = {str(graph.value(obj, CP.objectName)) for obj in graph.objects(None, CP.forObject)}
     for name in sorted(required - set(data.object_names)):
-        report.errors.append(f"Dataset has no 'object_pose.{name}' column, which the spec requires")
+        report.errors.append(f"Dataset has no 'object_position.{name}' column, which the spec requires")
     bad = [p for p in data.placements if not p.is_finite]
     for p in bad[:10]:
-        report.errors.append(f"Episode {p.episode_index}: non-finite initial pose for '{p.object_name}'")
+        report.errors.append(f"Episode {p.episode_index}: non-finite initial position for '{p.object_name}'")
     if len(bad) > 10:
-        report.errors.append(f"... {len(bad) - 10} more non-finite initial poses")
+        report.errors.append(f"... {len(bad) - 10} more non-finite initial positions")
     late = {e: f for e, f in data.first_frame_index.items() if f != 0}
     if late:
         sample = ", ".join(f"{e} (frame {f})" for e, f in list(late.items())[:5])
@@ -156,7 +156,7 @@ def build_verification_graph(dataset_root: str | Path, spec: str | Path) -> tupl
     return graph, report
 
 
-def verify_object_pose_coverage(
+def verify_object_position_coverage(
     dataset_root: str | Path,
     spec: str | Path,
     extra_shapes: list[str | Path] | None = None,
@@ -174,7 +174,7 @@ def verify_object_pose_coverage(
     if len(graph) == 0 or todo_fields(graph) or value_type_errors(graph):
         return report  # spec missing or not filled in; SHACL would only add noise
 
-    shapes = _packaged_graph("shapes", "object_pose_coverage.ttl")
+    shapes = _packaged_graph("shapes", "object_position_coverage.ttl")
     for path in extra_shapes or []:
         try:
             shapes.parse(Path(path), format="turtle")
@@ -184,7 +184,7 @@ def verify_object_pose_coverage(
     _, results_graph, _ = validate(
         data_graph=graph,
         shacl_graph=shapes,
-        ont_graph=_packaged_graph("ontology", "object_pose.ttl"),
+        ont_graph=_packaged_graph("ontology", "object_position.ttl"),
         inference="none",
         abort_on_first=False,
     )
