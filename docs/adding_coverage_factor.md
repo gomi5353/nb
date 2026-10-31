@@ -94,14 +94,15 @@ recover a factor that was never recorded in the dataset.
 **Required**
 
 The repository's `LeRobotRecorderManager` in
-[`object_pose_recording.py`](../packages/simulator/src/simulator/utils/object_pose_recording.py)
-is extended in the same way that it adds the `object_pose.*` columns
+[`lerobot_recorder.py`](../packages/simulator/src/simulator/utils/lerobot_recorder.py)
+is the base for every verification factor: it already adds the
+`object_pose.*` columns, and a new factor is appended next to them
 ([How to Record Episodes §5.2](how_to_record.md#52-the-repositorys-recorder-and-object-poses)).
 Recording continues with that class, so the object poses stay in the dataset
 next to the new factor.
 
 1. Declare the feature in the recorder's feature dictionary
-   (`build_with_object_poses`):
+   (`build_with_factors` in `lerobot_recorder.py`):
 
    ```python
    features["factor.light_intensity"] = {
@@ -112,8 +113,10 @@ next to the new factor.
    ```
 
 2. Read the value from the environment.
-3. Add it in `build_lerobot_frame()` at the same simulation step as the other
-   frame values:
+3. Add it in `build_lerobot_frame()` in
+   [`single_arm_franka_cfg.py`](../packages/simulator/src/simulator/tasks/template/single_arm_franka_cfg.py),
+   next to the object poses, at the same simulation step as the other frame
+   values:
 
    ```python
    frame["factor.light_intensity"] = np.asarray([light_lux], dtype=np.float32)

@@ -18,7 +18,7 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-# Keep in sync with simulator.utils.object_pose_recording.
+# Keep in sync with simulator.utils.lerobot_recorder.
 OBJECT_POSE_KEY_PREFIX = "object_pose."
 OBJECT_POSE_NAMES = ["x", "y", "z", "qw", "qx", "qy", "qz"]
 
@@ -59,7 +59,7 @@ def read_initial_placements(dataset_root: str | Path) -> DatasetPlacements:
     if not pose_keys:
         raise DatasetError(
             f"meta/info.json declares no '{OBJECT_POSE_KEY_PREFIX}<name>' features; "
-            "record with simulator.utils.object_pose_recording.LeRobotRecorderManager, not leisaac's recorder"
+            "record with simulator.utils.lerobot_recorder.LeRobotRecorderManager, not leisaac's recorder"
         )
     for key in pose_keys:
         shape = list(features[key].get("shape", []))

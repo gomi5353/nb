@@ -173,7 +173,7 @@ Other `make` targets:
 
 | Path | Content |
 |---|---|
-| `packages/simulator/` | Task configurations, the shared Franka template, randomization events, assets, and the LeRobot recorder (`simulator.utils.object_pose_recording`). |
+| `packages/simulator/` | Task configurations, the shared Franka template, randomization events, assets, and the LeRobot recorder (`simulator.utils.lerobot_recorder`). |
 | `packages/data_verification/` | The coverage checker (dataset reader, RDF graph builder, OWL ontology, SHACL rules, specification template). |
 | `eval/` | Public evaluation task files, one per task, used by rollout. |
 | `scripts/rollout.py` | Runs a trained policy in the simulator and reports the success rate. |

@@ -1,4 +1,8 @@
-"""Record per-frame object poses into LeRobot datasets for offline data verification.
+"""LeRobot recorder with extra columns for offline data verification.
+
+This is the repository's base extension of leisaac's ``LeRobotRecorderManager``.
+It adds one verification factor, the object pose; groups that verify further
+factors append them here (see ``docs/adding_coverage_factor.md``).
 
 Every tracked object gets its own dataset column ``object_pose.<name>``:
 float32 ``(7,)`` = ``[x, y, z, qw, qx, qy, qz]``, position relative to the env
@@ -8,10 +12,15 @@ The ``object_pose.`` prefix is deliberate. LeRobot turns every ``observation.*``
 key and every ``action*`` key into a policy input/output
 (``lerobot.datasets.utils.dataset_to_policy_features``); any other column is
 ignored by policies. These columns are therefore safe for training and rollout,
-and are read back by ``packages/data_verification``.
+and are read back by ``packages/data_verification``. New factors use their own
+non-``observation.`` prefix, such as ``factor.<name>``, for the same reason.
+
+A factor needs two additions: its feature spec in ``build_with_factors`` below,
+and its per-frame value in ``SingleArmFrankaTaskEnvCfg.build_lerobot_frame``
+(``tasks/template/single_arm_franka_cfg.py``), next to the object poses.
 
 Record with ``LeRobotRecorderManager`` from this module, not leisaac's original
-class, which writes no object poses.
+class, which writes no verification columns.
 
 Keep ``OBJECT_POSE_KEY_PREFIX`` / ``OBJECT_POSE_NAMES`` in sync with
 ``data_verification.dataset``.
@@ -65,7 +74,7 @@ def _make_recorder_manager_class():
     import leisaac.enhance.managers.lerobot_recorder_manager as leisaac_recorder
 
     class LeRobotRecorderManager(leisaac_recorder.LeRobotRecorderManager):
-        """leisaac's LeRobot recorder plus ``object_pose.<name>`` columns.
+        """leisaac's LeRobot recorder plus the verification columns.
 
         leisaac builds the dataset features inside ``__init__`` with no
         extension hook, so the feature builder is wrapped for the duration of
@@ -82,12 +91,13 @@ def _make_recorder_manager_class():
                 )
             base_build = leisaac_recorder.build_feature_from_env
 
-            def build_with_object_poses(env, dataset_cfg):
+            def build_with_factors(env, dataset_cfg):
                 features = base_build(env, dataset_cfg)
                 features.update(object_pose_features(object_names))
+                # Append the feature specs of further verification factors here.
                 return features
 
-            leisaac_recorder.build_feature_from_env = build_with_object_poses
+            leisaac_recorder.build_feature_from_env = build_with_factors
             try:
                 super().__init__(cfg, dataset_cfg, env)
             finally:

@@ -229,7 +229,7 @@ def _module_constants(path: Path) -> dict[str, object]:
 
 
 def test_recorder_and_verifier_agree_on_column_format() -> None:
-    recorder = _module_constants(ROOT / "packages/simulator/src/simulator/utils/object_pose_recording.py")
+    recorder = _module_constants(ROOT / "packages/simulator/src/simulator/utils/lerobot_recorder.py")
     assert recorder == {"OBJECT_POSE_KEY_PREFIX": OBJECT_POSE_KEY_PREFIX, "OBJECT_POSE_NAMES": OBJECT_POSE_NAMES}
 
 

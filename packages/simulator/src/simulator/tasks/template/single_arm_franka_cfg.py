@@ -20,7 +20,7 @@ from leisaac.utils.env_utils import dynamic_reset_gripper_effort_limit_sim
 
 from simulator.assets.robots.franka import FRANKA_PANDA_CFG
 from simulator import FRANKA_JOINT_NAMES
-from simulator.utils.object_pose_recording import object_poses_from_episode
+from simulator.utils.lerobot_recorder import object_poses_from_episode
 
 from . import mdp
 

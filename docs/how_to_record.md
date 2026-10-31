@@ -73,7 +73,7 @@ What the repository provides, and what students do with it:
 |---|---|---|
 | Task configurations | `packages/simulator/src/simulator/tasks/<task>/<task>_env_cfg.py` | Read; may modify, aligned with rollout ([section 2.1](#21-modifying-the-environment-configuration)) |
 | Shared robot, camera, and action settings | `packages/simulator/src/simulator/tasks/template/single_arm_franka_cfg.py` | Read; may modify, aligned with rollout ([section 2.1](#21-modifying-the-environment-configuration)) |
-| LeRobot recorder | `packages/simulator/src/simulator/utils/object_pose_recording.py` | Import and use |
+| LeRobot recorder | `packages/simulator/src/simulator/utils/lerobot_recorder.py` | Import and use; extend to record further verification factors ([Adding a Coverage Factor §4](adding_coverage_factor.md#4-record-the-factor-in-lerobot-v3)) |
 | Evaluation files and rollout | `eval/`, `scripts/rollout.py` | Use later for evaluation |
 | Coverage check | `scripts/verify_object_pose_coverage.py` | Run on every dataset |
 | Controller | none | **Implement** |
@@ -467,13 +467,17 @@ Consequences that the recording loop has to respect (source:
 The recorder is imported from this repository, **not** from leisaac:
 
 ```python
-from simulator.utils.object_pose_recording import LeRobotRecorderManager       # use this
+from simulator.utils.lerobot_recorder import LeRobotRecorderManager       # use this
 # from leisaac.enhance.managers.lerobot_recorder_manager import LeRobotRecorderManager  # not this
 ```
 
-[`object_pose_recording.py`](../packages/simulator/src/simulator/utils/object_pose_recording.py)
-defines a subclass of leisaac's `LeRobotRecorderManager`. The two classes
-compare as follows:
+[`lerobot_recorder.py`](../packages/simulator/src/simulator/utils/lerobot_recorder.py)
+defines a subclass of leisaac's `LeRobotRecorderManager`. It is the
+repository's base extension for data verification: it adds one verification
+factor, the object pose. A group that verifies further factors appends them to
+this module ([Adding a Coverage Factor §4](adding_coverage_factor.md#4-record-the-factor-in-lerobot-v3)),
+so that one recorder writes all verification columns. The two classes compare
+as follows:
 
 | | leisaac's `LeRobotRecorderManager` | Repository's `LeRobotRecorderManager` |
 |---|---|---|
@@ -557,7 +561,7 @@ from leisaac.enhance.datasets.lerobot_dataset_handler import LeRobotDatasetCfg
 from leisaac.enhance.managers import EnhanceDatasetExportMode
 
 import simulator.tasks  # noqa: F401  registers the HCIS-* tasks
-from simulator.utils.object_pose_recording import LeRobotRecorderManager
+from simulator.utils.lerobot_recorder import LeRobotRecorderManager
 
 from my_controller import MyStateMachine  # the group's controller (section 4)
 
@@ -788,7 +792,7 @@ existing episodes from a failed session.
 | Error or empty episode right after a saved one | The success state was not cleared after the reset | After every `env.reset()`, set the success term back to `False` (`set_success(env, False)`, [section 5.3](#53-the-collection-entry-point)) |
 | First frames show the previous episode's scene | The controller moved during the skipped steps | Hold still for at least 5 steps after each reset |
 | Camera errors / images missing | Started without `--enable_cameras` | Add the flag |
-| Missing `object_pose.*` features | leisaac's `LeRobotRecorderManager` was imported instead of the repository's | Import from `simulator.utils.object_pose_recording` ([section 5.2](#52-the-repositorys-recorder-and-object-poses)) and record again |
+| Missing `object_pose.*` features | leisaac's `LeRobotRecorderManager` was imported instead of the repository's | Import from `simulator.utils.lerobot_recorder` ([section 5.2](#52-the-repositorys-recorder-and-object-poses)) and record again |
 | `ValueError: ... tracked_object_names is empty` | The task configuration tracks no objects (only possible for a self-defined task) | Set `tracked_object_names` to the task's rigid objects |
 | `KeyError: '<object name>'` on the first recorded frame | `env_cfg.recorders` was replaced, so the `states` buffer is missing | Keep the default `ActionStateRecorderManagerCfg` and change only its export mode |
 | Keyboard does nothing | Running `--headless`, or the input adapter still waits for its start key | Run with the GUI and press the start key that the script defines |
@@ -806,7 +810,7 @@ existing episodes from a failed session.
 - [ ] Each episode is a single attempt that ends shortly after the task is done.
 - [ ] The group's definition of "done" is stricter than, or equal to, the built-in check, and `check_success(env)` enforces it.
 - [ ] Every phase and every episode has a step limit.
-- [ ] The recorder is imported from `simulator.utils.object_pose_recording`, not from leisaac.
+- [ ] The recorder is imported from `simulator.utils.lerobot_recorder`, not from leisaac.
 - [ ] Dataset `fps` is 60 in every session.
 - [ ] `finalize()` runs at the end of every session.
 - [ ] `meta/info.json` lists one `object_pose.<name>` feature per tracked object.
