@@ -1,4 +1,4 @@
-# Physical AI
+# EDRLP: Evaluation-Driven Robot Learning Pipeline
 
 Course project on learning-based robot manipulation in simulation. Each group
 picks one of three pick-and-place tasks, builds its own data collection for it
@@ -11,6 +11,10 @@ with LeRobot, and evaluates the policy with the provided rollout script.
 **Start here: [Getting Started](docs/getting_started.md).** It walks through
 the whole pipeline (setup, recording, verification, training, evaluation, and
 diagnosis) and links to the detailed guides below.
+
+> **Fork first.** Students cannot push to this repository. Each group forks
+> it on GitHub and clones the fork, so that its changes can be pushed and kept
+> ([Getting Started §3.2](docs/getting_started.md#32-fork-and-clone-the-repository)).
 
 ## Pipeline
 

@@ -105,16 +105,67 @@ newgrp docker
 docker --version
 ```
 
-### 3.2 Install the host environment
+### 3.2 Fork and clone the repository
+
+Students cannot push to the course repository. Every group therefore works in
+its own **fork**: a copy of the repository under a group member's GitHub
+account. The group's work (collection script, controller, configuration
+changes, coverage specifications, new verification factors) is committed and
+pushed to the fork, so it is kept, shared within the group, and handed in
+from there. A plain clone of the course repository would leave all changes on
+one machine, with no place to push them.
+
+1. On the course repository's GitHub page, one group member clicks **Fork**
+   and creates the fork under their own account. The other members are added
+   as collaborators (fork **Settings → Collaborators**).
+2. Every member clones the **fork**, not the course repository:
+
+   ```bash
+   git clone https://github.com/<github-user>/EDRLP
+   cd EDRLP
+   git remote add upstream https://github.com/HCIS-lab/EDRLP
+   git remote -v   # origin = the fork (push here), upstream = the course repository
+   ```
+
+3. Work is committed and pushed to the fork as usual:
+
+   ```bash
+   git add <files>
+   git commit -m "<message>"
+   git push origin main
+   ```
+
+4. When the course repository is updated (fixes, new evaluation files), the
+   group merges the updates into its fork:
+
+   ```bash
+   git fetch upstream
+   git merge upstream/main
+   git push origin main
+   ```
+
+   Conflicts appear only where the group changed the same lines as the update.
+
+Notes:
+
+- Datasets, checkpoints, and training outputs (`datasets/`, `checkpoints/`,
+  `outputs/`) are ignored by Git. They are shared through the Hugging Face Hub
+  ([step 3](#6-step-3-inspect-and-verify-the-dataset) and
+  [LeRobot Training §7](lerobot_training.md#7-upload-a-checkpoint)), not
+  through the fork.
+- The Isaac Lab submodule (`dependencies/IsaacLab/`) is fetched by the first
+  `make launch-isaaclab` ([section 3.5](#35-launch-the-isaac-lab-container)).
+
+### 3.3 Install the host environment
+
+From the root of the cloned fork:
 
 ```bash
-git clone https://github.com/gomi5353/supercoolcourseproject
-cd supercoolcourseproject
 uv sync                     # creates .venv with the locked package versions
 source .venv/bin/activate   # makes lerobot-train, hf, ... available
 ```
 
-### 3.3 Log in to Hugging Face
+### 3.4 Log in to Hugging Face
 
 ```bash
 hf auth login --token <YOUR_HF_TOKEN>
@@ -124,7 +175,7 @@ export HF_USER=<your-huggingface-username>
 Commands in all guides use `${HF_USER}`. The variable is set again in every
 new terminal, including inside the container.
 
-### 3.4 Launch the Isaac Lab container
+### 3.5 Launch the Isaac Lab container
 
 | Command | Machine |
 |---|---|
@@ -159,7 +210,7 @@ Other `make` targets:
 | `make fix-perms` | Give files that the container wrote under `datasets/` and `outputs/` back to the host user |
 | `make test` | Run the host-side tests |
 
-### 3.5 Where to run what
+### 3.6 Where to run what
 
 | Work | Environment | Reason |
 |---|---|---|
@@ -167,7 +218,7 @@ Other `make` targets:
 | Training | Host `uv` environment | The container adds file-access and GPU pass-through overhead. |
 | Coverage check, dataset inspection, tests | Host `uv` environment | They only read files and never start the simulator. |
 
-### 3.6 Repository layout
+### 3.7 Repository layout
 
 **Background**
 
