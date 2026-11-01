@@ -153,7 +153,7 @@ students should read it to learn what their controller has to work with.
 | Task id | `HCIS-CupStacking-SingleArm-v0` | `HCIS-CutleryArrangement-SingleArm-v0` | `HCIS-ToyBlocksCollection-SingleArm-v0` |
 | Configuration file | [`cup_stacking_env_cfg.py`](../packages/simulator/src/simulator/tasks/cup_stacking/cup_stacking_env_cfg.py) | [`cutlery_arrangement_env_cfg.py`](../packages/simulator/src/simulator/tasks/cutlery_arrangement/cutlery_arrangement_env_cfg.py) | [`toy_blocks_collection_env_cfg.py`](../packages/simulator/src/simulator/tasks/toy_blocks_collection/toy_blocks_collection_env_cfg.py) |
 | Scene objects (`env.scene[name]`) | `blue_cup`, `pink_cup` | `plate`, `fork`, `knife` | `green_block`, `blue_block`, `red_block`, `storage_box` |
-| Success check (`success` term) | Blue cup within 5 cm of the pink cup in x and y, and more than 10 cm higher | Fork and knife both within 15 cm (xy) of the plate; fork at smaller x than the plate (the robot's left, the right side of the front image), knife at larger x | Every block within 12 cm (x, y) and 8 cm (z) of the box |
+| Success check (`success` term) | Blue cup within 2 cm of the pink cup in x and in y, and 8–10 cm higher | Fork and knife each inside a 10 cm × 10 cm square beside the plate, the square centred 12 cm from the plate centre: fork at smaller x (the robot's left, the right side of the front image), knife at larger x | Every block inside the storage box footprint (0.296 m × 0.209 m) shrunk by 1 cm on each side, measured in the box's own frame (the region turns with the box), and 0–11 cm above the box root (the box bottom) |
 | Task text (`task_description`) | `pick up the blue cup and place it on the pink cup.` | `place the fork on the left and knife on the right of the plate.` | `pick up the toys and place them into the storage box.` |
 | Episode time-out | 20 s | 40 s | 60 s |
 
@@ -198,7 +198,7 @@ Facts about the tasks that a controller has to handle:
 - The success check looks only at object positions, at a single moment. It
   does not know whether the gripper still holds an object. In cup stacking,
   for example, the check can already pass while the blue cup is still in the
-  gripper, hovering above the pink cup. Each group decides what "done" means
+  gripper, held at required height above the pink cup. Each group decides what "done" means
   for its demonstrations (for example: object released, arm moved clear, check
   still passes), and the controller's `check_success(env)` enforces it.
 

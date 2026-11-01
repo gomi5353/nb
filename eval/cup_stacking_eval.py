@@ -57,19 +57,18 @@ def blue_cup_on_top_pink_cup(
     env,
     blue_cup_cfg: SceneEntityCfg,
     pink_cup_cfg: SceneEntityCfg,
-    x_tolerance: float,
-    y_tolerance: float,
-    height_threshold: float,
+    xy_tolerance: float,
+    z_range: tuple[float, float],
 ) -> torch.Tensor:
+    """Success: blue cup centred on the pink cup within ``xy_tolerance`` in x and y, and its root
+    ``z_range`` above the pink cup's root."""
     blue_cup: RigidObject = env.scene[blue_cup_cfg.name]
     pink_cup: RigidObject = env.scene[pink_cup_cfg.name]
 
-    blue_cup_pos = blue_cup.data.root_pos_w - env.scene.env_origins
-    pink_cup_pos = pink_cup.data.root_pos_w - env.scene.env_origins
-
-    done = torch.abs(blue_cup_pos[:, 0] - pink_cup_pos[:, 0]) < x_tolerance
-    done = torch.logical_and(done, torch.abs(blue_cup_pos[:, 1] - pink_cup_pos[:, 1]) < y_tolerance)
-    done = torch.logical_and(done, blue_cup_pos[:, 2] > pink_cup_pos[:, 2] + height_threshold)
+    offset = blue_cup.data.root_pos_w - pink_cup.data.root_pos_w
+    done = torch.all(torch.abs(offset[:, :2]) <= xy_tolerance, dim=1)
+    done = torch.logical_and(done, offset[:, 2] >= z_range[0])
+    done = torch.logical_and(done, offset[:, 2] <= z_range[1])
     return done
 
 
@@ -80,9 +79,8 @@ class EvalTerminationsCfg(SingleArmFrankaTerminationsCfg):
         params={
             "blue_cup_cfg": SceneEntityCfg("blue_cup"),
             "pink_cup_cfg": SceneEntityCfg("pink_cup"),
-            "x_tolerance": 0.05,
-            "y_tolerance": 0.05,
-            "height_threshold": 0.10,
+            "xy_tolerance": 0.02,
+            "z_range": (0.08, 0.10),
         },
     )
 

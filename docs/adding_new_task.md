@@ -125,12 +125,11 @@ The success check is a function that returns a boolean tensor of shape
 `(num_envs,)`, wrapped in a `DoneTerm` named `success`:
 
 ```python
-def blue_cup_on_top_pink_cup(env, blue_cup_cfg, pink_cup_cfg, x_range, y_range, height_threshold):
-    blue = env.scene[blue_cup_cfg.name].data.root_pos_w - env.scene.env_origins
-    pink = env.scene[pink_cup_cfg.name].data.root_pos_w - env.scene.env_origins
-    done = (blue[:, 0] > pink[:, 0] + x_range[0]) & (blue[:, 0] < pink[:, 0] + x_range[1])
-    done &= (blue[:, 1] > pink[:, 1] + y_range[0]) & (blue[:, 1] < pink[:, 1] + y_range[1])
-    done &= blue[:, 2] > pink[:, 2] + height_threshold
+def blue_cup_on_top_pink_cup(env, blue_cup_cfg, pink_cup_cfg, xy_tolerance, z_range):
+    # A difference of two positions in the same env needs no env_origins.
+    offset = env.scene[blue_cup_cfg.name].data.root_pos_w - env.scene[pink_cup_cfg.name].data.root_pos_w
+    done = torch.all(torch.abs(offset[:, :2]) <= xy_tolerance, dim=1)
+    done &= (offset[:, 2] >= z_range[0]) & (offset[:, 2] <= z_range[1])
     return done
 
 
@@ -141,9 +140,8 @@ class TerminationsCfg(SingleArmFrankaTerminationsCfg):
         params={
             "blue_cup_cfg": SceneEntityCfg("blue_cup"),
             "pink_cup_cfg": SceneEntityCfg("pink_cup"),
-            "x_range": (-0.05, 0.05),
-            "y_range": (-0.05, 0.05),
-            "height_threshold": 0.10,
+            "xy_tolerance": 0.02,
+            "z_range": (0.08, 0.10),
         },
     )
 ```
@@ -346,7 +344,7 @@ reproducibility documentation.
 
 - [ ] Files at `packages/simulator/src/simulator/tasks/<my_task>/`, named by the conventions in section 2.
 - [ ] Scene, terminations, and environment classes are `@configclass` subclasses of the template classes.
-- [ ] Success check uses `env.scene.env_origins` and returns a `(num_envs,)` boolean tensor.
+- [ ] Success check uses env-local positions (subtracts `env.scene.env_origins`, or compares two objects of the same env) and returns a `(num_envs,)` boolean tensor.
 - [ ] `task_description`, `tracked_object_names`, and `episode_length_s` are set.
 - [ ] `__post_init__` calls `super().__post_init__()` first.
 - [ ] Reset randomization of object positions (and lighting) is registered.
