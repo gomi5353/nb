@@ -1,73 +1,95 @@
 # LeRobot Dataset Visualizer
 
-The Hugging Face Space at <https://huggingface.co/spaces/lerobot/visualize_dataset> is a hosted GUI for inspecting any LeRobot-format dataset published on the Hub. It pairs the recorded multi-camera video with per-frame `observation.state` / `action` plots and an episode picker — useful for spot-checking your recorded demonstrations before sinking GPU time into training.
+This guide describes how recorded episodes are inspected visually before
+training. It extends step 3 of [Getting Started](getting_started.md).
 
-## When to use it
+Every section starts with one of two labels: **Required** (something students
+must do or follow) or **Background** (explanation without work items).
 
-- After recording a dataset with your collection script ([How to Record Episodes](how_to_record.md)) and uploading it to the Hub.
-- To audit episode boundaries, action-trace continuity, and camera framing without standing up a local viewer.
-- To share concrete examples with collaborators by URL — the Space accepts a `dataset` query parameter pointing at any public Hub repo.
+## 1. Purpose
 
-It is **not** a recorder, decoder, or editor. Read-only inspection of already-pushed Hub datasets only.
+**Background**
 
-## Prerequisite: dataset on the Hub
+The visualizer shows the recorded camera videos together with per-frame plots
+of `observation.state` and `action`, and an episode picker. It is used to
+check episode boundaries, the continuity of the motion, and the camera
+framing before GPU time is spent on training. It only reads datasets; it does
+not record or edit them.
 
-The Space loads via `repo_id`, so the dataset must already be on the Hub. Your recording script
-writes it locally (`datasets/<hf_user>/<dataset_name>` on the host). Upload it from the host:
+Two versions exist:
 
-```bash
-hf upload <hf_user>/<dataset_name> datasets/<hf_user>/<dataset_name> --repo-type dataset
-```
+| Version | Where | Needs |
+|---|---|---|
+| Hosted Space, <https://huggingface.co/spaces/lerobot/visualize_dataset> | Browser | The dataset uploaded to the Hugging Face Hub |
+| `lerobot-dataset-viz` | Host `uv` environment | Only the local dataset folder |
 
-Public datasets work without auth in the Space; private datasets require the viewer to be signed into the Hub with read access.
+## 2. Inspect a few episodes
 
-## Opening a dataset in the Space
+**Required**
 
-Two equivalent forms:
+### 2.1 Local viewer
 
-1. Visit <https://huggingface.co/spaces/lerobot/visualize_dataset>, paste `<hf_user>/<dataset_name>` into the input, hit load.
-2. Direct deep link — append the repo as a query parameter:
-
-   ```
-   https://huggingface.co/spaces/lerobot/visualize_dataset?dataset=<hf_user>/<dataset_name>
-   ```
-
-   Optional: append `&episode=<N>` to jump to a specific episode.
-
-## What the UI shows
-
-| Panel | Source field | What to look for |
-|-------|-------------|------------------|
-| Video player | `observation.images.<camera>` features (we use `wrist`, `front`) | Smooth playback, correct framing, no missing frames between episodes |
-| State plot | `observation.state` (Franka joint positions) | Continuous trajectories within joint limits; no jumps at episode boundaries |
-| Action plot | `action` (joint targets + gripper command) | Aligned with state, gripper open/close transitions match the task |
-| Episode picker | `episode_index` | Episode count matches expectation; per-episode length looks sane |
-| Frame scrubber | `frame_index` / `timestamp` | Total frames ≈ `fps × episode_seconds` (60 fps: one frame per simulation step; each camera image repeats on two consecutive frames) |
-
-The Space reads features from the dataset's `meta/info.json`, so anything the recorder did not declare there will not appear. If a camera is missing from the video panel, check `LeRobotDatasetCfg.features` wiring in `leisaac.enhance.datasets.lerobot_dataset_handler`.
-
-## Common issues
-
-- **"Dataset not found"** — repo id typo, or the dataset is private and the Space session is not authenticated. Open the repo page directly first to confirm visibility.
-- **Video panel is blank but state plots load** — videos failed to encode at recording time, or the `meta/videos/` shards never uploaded. Check the local dataset directory for `videos/chunk-*/episode_*.mp4`.
-- **Action and state plots have different lengths** — recorder dropped frames; inspect the episode lengths in `meta/episodes/`.
-- **Episode boundaries look wrong** — typically a `done` / termination misfire. Cross-reference against the env's `terminations.success` predicate (e.g. `cutlery_arranged`, `toys_in_box`).
-
-## Local alternative
-
-If the dataset is too large to push, or you need offline inspection, use the LeRobot CLI shipped with the `lerobot` package:
+On the host, with the `uv` environment active:
 
 ```bash
 lerobot-dataset-viz \
-    --repo-id <hf_user>/<dataset_name> \
-    --root datasets/<hf_user>/<dataset_name> \
+    --repo-id ${HF_USER}/<dataset_name> \
+    --root datasets/${HF_USER}/<dataset_name> \
     --episode-index 0
 ```
 
-Run it on the host with the `uv` environment active. It shows the same plots and videos in a local rerun.io viewer. Good for iterating on recording configs before committing to a Hub push.
+It opens the same plots and videos in a local rerun.io viewer. This version
+needs no upload and suits quick checks while the collection script is still
+being developed.
 
-## References
+### 2.2 Hosted Space
+
+The dataset is uploaded first, from the host:
+
+```bash
+hf upload ${HF_USER}/<dataset_name> datasets/${HF_USER}/<dataset_name> --repo-type dataset
+```
+
+Then either `${HF_USER}/<dataset_name>` is entered in the Space, or the dataset
+is opened by a direct link:
+
+```text
+https://huggingface.co/spaces/lerobot/visualize_dataset?dataset=<hf_user>/<dataset_name>&episode=<N>
+```
+
+Public datasets open without signing in; private datasets require a Hub
+account with read access. A link can be shared with the rest of the group.
+
+## 3. What to look for
+
+**Required**
+
+| Panel | Source | What a good dataset shows |
+|---|---|---|
+| Video player | `observation.images.front`, `observation.images.wrist` | Correct framing, smooth playback. The first frame shows the freshly reset scene; the last frame shows the finished task. |
+| State plot | `observation.state` (Franka joint positions) | Continuous trajectories within joint limits; the curves move when the arm moves. |
+| Action plot | `action` (joint targets and gripper command) | Close to the state curves; gripper open and close switches where the task needs them. |
+| Episode picker | `episode_index` | The expected number of episodes, with plausible lengths. |
+| Frame scrubber | `frame_index`, `timestamp` | About `60 × episode seconds` frames (60 fps, one frame per simulation step; each camera image repeats on two consecutive frames). |
+
+The visualizer reads the features from the dataset's `meta/info.json`; a
+feature that the recorder did not declare does not appear. The
+`object_position.*` columns are not displayed; they are checked with
+[Object Position Coverage](object_position_coverage.md).
+
+## 4. Common issues
+
+**Background**
+
+| Symptom | Cause |
+|---|---|
+| "Dataset not found" in the Space | Typo in the repo id, or a private dataset while not signed in. Opening the dataset's Hub page shows whether it is visible. |
+| Video panel blank while the plots load | Videos failed to encode during recording, or were not uploaded. The local folder should contain `videos/observation.images.*/chunk-*/file-*.mp4`. |
+| A camera is missing | The dataset was not recorded with the repository's recorder, or the scene was changed ([How to Record Episodes §5.4](how_to_record.md#54-what-each-frame-contains)). |
+| Episode starts with the previous episode's scene | The controller moved during the 5 skipped steps after a reset ([How to Record Episodes §5.1](how_to_record.md#51-how-the-recorder-works)). |
+| Episode ends early or late | The controller's `is_episode_done` or `check_success` misfires; compare it with the task's success check ([How to Record Episodes §3](how_to_record.md#3-the-task-configuration)). |
+
+## 5. References
 
 - Hosted visualizer: <https://huggingface.co/spaces/lerobot/visualize_dataset>
-- LeRobot dataset format spec: <https://huggingface.co/docs/lerobot>
-- Recorder wiring: [How to Record Episodes](how_to_record.md)
+- LeRobot documentation: <https://huggingface.co/docs/lerobot>

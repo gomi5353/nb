@@ -1,92 +1,91 @@
-"""Turn a coverage spec and a dataset's initial placements into one RDF graph."""
+"""Turn a coverage spec and a dataset's initial positions into one RDF graph."""
 
 from __future__ import annotations
 
 from decimal import Decimal
 from urllib.parse import quote
 
-from rdflib import RDF, XSD, Graph, Literal, Namespace, URIRef
+from rdflib import RDF, XSD, BNode, Graph, Literal, Namespace, URIRef
 
 from .dataset import DatasetPlacements
 
-DV = Namespace("urn:physicalai:dv#")
+CP = Namespace("http://taica.course/cp/ontology#")
+
+AREA_BOUNDS = (CP.areaXMin, CP.areaXMax, CP.areaYMin, CP.areaYMax)
 
 
 def expand_cells(graph: Graph) -> None:
-    """Store requirement bounds as doubles and add a dv:CoverageCell per grid cell.
+    """Store area bounds as decimals and add a cp:Cell per grid cell, indexed row-major.
 
-    Requirements with missing or invalid bounds/grid are skipped here; the
-    SHACL requirement shape reports them.
+    Grids with a missing or invalid numCellW/numCellH are skipped here; the
+    SHACL grid shape reports them.
     """
-    for req in list(graph.subjects(RDF.type, DV.CoverageRequirement)):
-        # Turtle writes 0.2 as xsd:decimal, and rdflib compares Decimal("0.2")
-        # exactly against the double 0.2000000000000000111, which would put a
-        # placement on the boundary outside. Store bounds as doubles.
-        for prop in (DV.xMin, DV.xMax, DV.yMin, DV.yMax):
-            values = list(graph.objects(req, prop))
-            if len(values) == 1 and isinstance(values[0].toPython(), (int, float, Decimal)):
-                graph.set((req, prop, _double(float(values[0]))))
+    # Positions are decimals rounded to 6 places; a bound written as a double
+    # (8.8e0) would compare against them as 8.800000000000000710.
+    for area in set(graph.subjects(RDF.type, CP.AreaConfiguration)):
+        for prop in AREA_BOUNDS:
+            values = list(graph.objects(area, prop))
+            value = values[0].toPython() if len(values) == 1 else None
+            if isinstance(value, (int, float, Decimal)) and not isinstance(value, bool):
+                graph.set((area, prop, Literal(Decimal(str(value)), datatype=XSD.decimal)))
+
+    for grid in set(graph.subjects(RDF.type, CP.CoverageGrid)):
         try:
-            x0, x1, y0, y1 = (float(graph.value(req, p)) for p in (DV.xMin, DV.xMax, DV.yMin, DV.yMax))
-            nx, ny = int(graph.value(req, DV.gridX)), int(graph.value(req, DV.gridY))
+            nw, nh = int(graph.value(grid, CP.numCellW)), int(graph.value(grid, CP.numCellH))
         except (TypeError, ValueError):
             continue
-        if nx < 1 or ny < 1 or x0 >= x1 or y0 >= y1:
+        if nw < 1 or nh < 1:
             continue
-        dx, dy = (x1 - x0) / nx, (y1 - y0) / ny
-        for i in range(nx):
-            for j in range(ny):
-                cell = URIRef(f"{req}/cell/{i}_{j}")
-                graph.add((cell, RDF.type, DV.CoverageCell))
-                graph.add((cell, DV.ofRequirement, req))
-                graph.add((cell, DV.cellI, Literal(i)))
-                graph.add((cell, DV.cellJ, Literal(j)))
-                # Last column/row reuses the requirement's exact upper bound.
-                graph.add((cell, DV.xMin, _bound(x0 + i * dx)))
-                graph.add((cell, DV.xMax, _bound(x1 if i == nx - 1 else x0 + (i + 1) * dx)))
-                graph.add((cell, DV.yMin, _bound(y0 + j * dy)))
-                graph.add((cell, DV.yMax, _bound(y1 if j == ny - 1 else y0 + (j + 1) * dy)))
-                graph.add((cell, DV.xMaxInclusive, Literal(i == nx - 1)))
-                graph.add((cell, DV.yMaxInclusive, Literal(j == ny - 1)))
+        base = str(grid) if isinstance(grid, URIRef) else f"urn:cp:grid:{grid}"
+        for k in range(nw * nh):
+            cell = URIRef(f"{base}/cell/{k}")
+            graph.add((cell, RDF.type, CP.Cell))
+            graph.add((grid, CP.hasCell, cell))
+            graph.add((cell, CP.hasIndex, _index(URIRef(f"{cell}/index"), k, graph)))
 
 
 def add_dataset(graph: Graph, dataset_name: str, data: DatasetPlacements) -> URIRef:
-    """Add the dataset, its episodes and their finite initial placements."""
-    dataset = URIRef(f"urn:physicalai:data:{quote(dataset_name, safe='')}")
-    graph.add((dataset, RDF.type, DV.Dataset))
+    """Add the dataset, its episodes and the objects' finite initial positions; link it from every axis."""
+    dataset = URIRef(f"http://taica.course/cp/data/{quote(dataset_name, safe='')}")
+    graph.add((dataset, RDF.type, CP.Dataset))
+    for axis in set(graph.subjects(RDF.type, CP.ObjectPositionAxis)):
+        graph.add((axis, CP.hasDataset, dataset))
 
-    objects = {str(graph.value(obj, DV.objectName)): obj for obj in graph.subjects(RDF.type, DV.TaskObject)}
+    # One Name node per object, shared by its TaskObject in every episode.
+    names = {}
     for name in data.object_names:
-        if name not in objects:
-            # Recorded but not required by the spec: still described, never checked.
-            objects[name] = URIRef(f"{dataset}/object/{quote(name, safe='')}")
-            graph.add((objects[name], RDF.type, DV.TaskObject))
-            graph.add((objects[name], DV.objectName, Literal(name)))
+        names[name] = URIRef(f"{dataset}/name/{quote(name, safe='')}")
+        graph.add((names[name], RDF.type, CP.Name))
+        graph.add((names[name], CP.nameValue, Literal(name)))
 
     for episode_index in data.episode_indices:
         episode = URIRef(f"{dataset}/episode/{episode_index}")
-        graph.add((episode, RDF.type, DV.Episode))
-        graph.add((episode, DV.episodeIndex, Literal(episode_index)))
-        graph.add((dataset, DV.hasEpisode, episode))
+        graph.add((episode, RDF.type, CP.Episode))
+        graph.add((episode, CP.hasIndex, _index(URIRef(f"{episode}/index"), episode_index, graph)))
+        graph.add((dataset, CP.hasEpisode, episode))
 
     for placement in data.placements:
         if not placement.is_finite:
             continue
         episode = URIRef(f"{dataset}/episode/{placement.episode_index}")
-        node = URIRef(f"{episode}/placement/{quote(placement.object_name, safe='')}")
-        graph.add((node, RDF.type, DV.ObjectPlacement))
-        graph.add((node, DV.ofObject, objects[placement.object_name]))
-        graph.add((node, DV.x, _double(placement.x)))
-        graph.add((node, DV.y, _double(placement.y)))
-        graph.add((node, DV.z, _double(placement.z)))
-        graph.add((episode, DV.hasInitialPlacement, node))
+        obj = URIRef(f"{episode}/object/{quote(placement.object_name, safe='')}")
+        position = URIRef(f"{obj}/position")
+        graph.add((obj, RDF.type, CP.TaskObject))
+        graph.add((obj, CP.hasName, names[placement.object_name]))
+        graph.add((obj, CP.hasPosition, position))
+        graph.add((position, RDF.type, CP.Position))
+        graph.add((position, CP.positionX, _decimal(placement.x)))
+        graph.add((position, CP.positionY, _decimal(placement.y)))
+        graph.add((episode, CP.hasTaskObject, obj))
     return dataset
 
 
-def _double(value: float) -> Literal:
-    return Literal(float(value), datatype=XSD.double)
+def _index(node: URIRef | BNode, value: int, graph: Graph) -> URIRef | BNode:
+    graph.add((node, RDF.type, CP.Index))
+    graph.add((node, CP.indexValue, Literal(value, datatype=XSD.nonNegativeInteger)))
+    return node
 
 
-def _bound(value: float) -> Literal:
-    # Grid edges are derived by arithmetic; drop float noise (6.4799999999999995 -> 6.48).
-    return _double(round(value, 9))
+def _decimal(value: float) -> Literal:
+    # Recorded positions are float32; 6 places keep micrometres and drop float noise.
+    return Literal(Decimal(str(round(value, 6))), datatype=XSD.decimal)

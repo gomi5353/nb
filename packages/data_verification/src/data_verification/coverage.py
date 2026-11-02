@@ -1,4 +1,4 @@
-"""Object pose coverage verification: build the graph, run SHACL, summarize."""
+"""Object position coverage verification: build the graph, run SHACL, summarize."""
 
 from __future__ import annotations
 
@@ -8,37 +8,57 @@ from importlib.resources import files
 from pathlib import Path
 
 from pyshacl import validate
-from rdflib import RDF, Graph, Namespace
+from rdflib import RDF, XSD, Graph, Namespace
 
 from .dataset import DatasetError, read_initial_placements
-from .graph import DV, add_dataset, expand_cells
+from .graph import CP, add_dataset, expand_cells
 from .spec_template import todo_fields, value_type_errors
 
 SH = Namespace("http://www.w3.org/ns/shacl#")
 
-# Same membership rule as dv:CoverageCellShape, without the HAVING filter.
+# Same cell bounds and membership rule as cp:CellShape, without the HAVING filter.
 _CELL_COUNTS_QUERY = """
-SELECT ?name ?i ?j ?min (COUNT(DISTINCT ?p) AS ?n) WHERE {
-    ?cell a dv:CoverageCell ; dv:ofRequirement ?req ; dv:cellI ?i ; dv:cellJ ?j ;
-          dv:xMin ?x0 ; dv:xMax ?x1 ; dv:yMin ?y0 ; dv:yMax ?y1 ;
-          dv:xMaxInclusive ?xi ; dv:yMaxInclusive ?yi .
-    ?req dv:forObject ?obj ; dv:minEpisodesPerCell ?min .
-    ?obj dv:objectName ?name .
+SELECT ?req ?k (COUNT(DISTINCT ?episode) AS ?n) WHERE {
+    ?cell a cp:Cell ; cp:hasIndex ?index .
+    ?index cp:indexValue ?k .
+    ?grid cp:hasCell ?cell ; cp:numCellW ?nw ; cp:numCellH ?nh .
+    ?area cp:hasCoverageGrid ?grid ;
+          cp:areaXMin ?ax0 ; cp:areaXMax ?ax1 ; cp:areaYMin ?ay0 ; cp:areaYMax ?ay1 .
+    ?req cp:hasAreaConfiguration ?area ; cp:hasTaskObject ?reqObj .
+    ?reqObj cp:hasName ?reqName . ?reqName cp:nameValue ?name .
+    BIND (xsd:integer(FLOOR(?k / ?nw)) AS ?j)
+    BIND (?k - ?nw * ?j AS ?i)
+    BIND (?ax0 + ?i * (?ax1 - ?ax0) / ?nw AS ?x0)
+    BIND (IF(?i = ?nw - 1, ?ax1, ?ax0 + (?i + 1) * (?ax1 - ?ax0) / ?nw) AS ?x1)
+    BIND (?ay0 + ?j * (?ay1 - ?ay0) / ?nh AS ?y0)
+    BIND (IF(?j = ?nh - 1, ?ay1, ?ay0 + (?j + 1) * (?ay1 - ?ay0) / ?nh) AS ?y1)
     OPTIONAL {
-        ?p dv:ofObject ?obj ; dv:x ?x ; dv:y ?y .
-        FILTER (?x >= ?x0 && (?x < ?x1 || (?xi && ?x = ?x1)) &&
-                ?y >= ?y0 && (?y < ?y1 || (?yi && ?y = ?y1)))
+        ?episode a cp:Episode ; cp:hasTaskObject ?obj .
+        ?obj cp:hasName ?objName ; cp:hasPosition ?p .
+        ?objName cp:nameValue ?name .
+        ?p cp:positionX ?x ; cp:positionY ?y .
+        FILTER (?x >= ?x0 && (?x < ?x1 || (?i = ?nw - 1 && ?x = ?x1)) &&
+                ?y >= ?y0 && (?y < ?y1 || (?j = ?nh - 1 && ?y = ?y1)))
     }
 }
-GROUP BY ?name ?i ?j ?min
+GROUP BY ?req ?k
 """
 
 _REQUIREMENTS_QUERY = """
-SELECT ?name ?x0 ?x1 ?y0 ?y1 ?nx ?ny ?min WHERE {
-    ?req a dv:CoverageRequirement ; dv:forObject ?obj ;
-         dv:xMin ?x0 ; dv:xMax ?x1 ; dv:yMin ?y0 ; dv:yMax ?y1 ;
-         dv:gridX ?nx ; dv:gridY ?ny ; dv:minEpisodesPerCell ?min .
-    ?obj dv:objectName ?name .
+SELECT ?req ?name ?x0 ?x1 ?y0 ?y1 ?nx ?ny ?min WHERE {
+    ?req a cp:ObjectPositionAxisRequirement ; cp:hasTaskObject ?reqObj ;
+         cp:minEpisodesPerCell ?min ; cp:hasAreaConfiguration ?area .
+    ?reqObj cp:hasName ?reqName . ?reqName cp:nameValue ?name .
+    ?area cp:areaXMin ?x0 ; cp:areaXMax ?x1 ; cp:areaYMin ?y0 ; cp:areaYMax ?y1 ;
+          cp:hasCoverageGrid ?grid .
+    ?grid cp:numCellW ?nx ; cp:numCellH ?ny .
+}
+"""
+
+_REQUIRED_NAMES_QUERY = """
+SELECT DISTINCT ?name WHERE {
+    ?req a cp:ObjectPositionAxisRequirement ; cp:hasTaskObject ?reqObj .
+    ?reqObj cp:hasName ?reqName . ?reqName cp:nameValue ?name .
 }
 """
 
@@ -117,7 +137,7 @@ def build_verification_graph(dataset_root: str | Path, spec: str | Path) -> tupl
     except Exception as exc:  # rdflib raises several parser error types
         report.errors.append(f"Spec is not valid Turtle: {exc}")
         return graph, report
-    graph.bind("dv", DV)
+    graph.bind("cp", CP)
     todo = todo_fields(graph)
     if todo:
         report.errors.append("Spec still has TODO values: " + ", ".join(todo))
@@ -126,8 +146,8 @@ def build_verification_graph(dataset_root: str | Path, spec: str | Path) -> tupl
     if type_errors:
         report.errors.extend(type_errors)
         return graph, report
-    if not any(graph.subjects(RDF.type, DV.CoverageRequirement)):
-        report.errors.append("Spec declares no dv:CoverageRequirement; nothing to check")
+    if not any(graph.subjects(RDF.type, CP.ObjectPositionAxisRequirement)):
+        report.errors.append("Spec declares no cp:ObjectPositionAxisRequirement; nothing to check")
     expand_cells(graph)
 
     try:
@@ -139,14 +159,14 @@ def build_verification_graph(dataset_root: str | Path, spec: str | Path) -> tupl
     report.num_episodes = len(data.episode_indices)
     if not data.episode_indices:
         report.errors.append("Dataset contains no episodes")
-    required = {str(graph.value(obj, DV.objectName)) for obj in graph.objects(None, DV.forObject)}
+    required = {str(row.name) for row in graph.query(_REQUIRED_NAMES_QUERY, initNs={"cp": CP})}
     for name in sorted(required - set(data.object_names)):
-        report.errors.append(f"Dataset has no 'object_pose.{name}' column, which the spec requires")
+        report.errors.append(f"Dataset has no 'object_position.{name}' column, which the spec requires")
     bad = [p for p in data.placements if not p.is_finite]
     for p in bad[:10]:
-        report.errors.append(f"Episode {p.episode_index}: non-finite initial pose for '{p.object_name}'")
+        report.errors.append(f"Episode {p.episode_index}: non-finite initial position for '{p.object_name}'")
     if len(bad) > 10:
-        report.errors.append(f"... {len(bad) - 10} more non-finite initial poses")
+        report.errors.append(f"... {len(bad) - 10} more non-finite initial positions")
     late = {e: f for e, f in data.first_frame_index.items() if f != 0}
     if late:
         sample = ", ".join(f"{e} (frame {f})" for e, f in list(late.items())[:5])
@@ -156,7 +176,7 @@ def build_verification_graph(dataset_root: str | Path, spec: str | Path) -> tupl
     return graph, report
 
 
-def verify_object_pose_coverage(
+def verify_object_position_coverage(
     dataset_root: str | Path,
     spec: str | Path,
     extra_shapes: list[str | Path] | None = None,
@@ -165,7 +185,8 @@ def verify_object_pose_coverage(
     """Check ``dataset_root`` against ``spec``; ``extra_shapes`` adds your own SHACL rules.
 
     ``graph_out`` also writes the data graph that SHACL validates (spec, generated
-    cells, episodes, initial placements) as Turtle, for inspection or SPARQL.
+    cells, episodes, task objects and their initial positions) as Turtle, for
+    inspection or SPARQL.
     """
     graph, report = build_verification_graph(dataset_root, spec)
     if graph_out is not None:  # also when empty, so an old file never looks current
@@ -174,7 +195,7 @@ def verify_object_pose_coverage(
     if len(graph) == 0 or todo_fields(graph) or value_type_errors(graph):
         return report  # spec missing or not filled in; SHACL would only add noise
 
-    shapes = _packaged_graph("shapes", "object_pose_coverage.ttl")
+    shapes = _packaged_graph("shapes", "object_position_coverage.ttl")
     for path in extra_shapes or []:
         try:
             shapes.parse(Path(path), format="turtle")
@@ -184,7 +205,7 @@ def verify_object_pose_coverage(
     _, results_graph, _ = validate(
         data_graph=graph,
         shacl_graph=shapes,
-        ont_graph=_packaged_graph("ontology", "object_pose.ttl"),
+        ont_graph=_packaged_graph("ontology", "object_position.ttl"),
         inference="none",
         abort_on_first=False,
     )
@@ -206,19 +227,20 @@ def verify_object_pose_coverage(
 
 def _coverage_tables(graph: Graph) -> list[ObjectCoverage]:
     counts: dict[str, Counter] = {}
-    for row in graph.query(_CELL_COUNTS_QUERY, initNs={"dv": DV}):
-        counts.setdefault(str(row.name), Counter())[(int(row.i), int(row.j))] = int(row.n)
+    for row in graph.query(_CELL_COUNTS_QUERY, initNs={"cp": CP, "xsd": XSD}):
+        counts.setdefault(str(row.req), Counter())[int(row.k)] = int(row.n)
     tables = []
-    for row in graph.query(_REQUIREMENTS_QUERY, initNs={"dv": DV}):
-        name, nx, ny = str(row.name), int(row.nx), int(row.ny)
-        cell_counts = counts.get(name, Counter())
+    for row in graph.query(_REQUIREMENTS_QUERY, initNs={"cp": CP}):
+        nx, ny = int(row.nx), int(row.ny)
+        cell_counts = counts.get(str(row.req), Counter())
         tables.append(
             ObjectCoverage(
-                object_name=name,
+                object_name=str(row.name),
                 x_range=(float(row.x0), float(row.x1)),
                 y_range=(float(row.y0), float(row.y1)),
                 min_episodes_per_cell=int(row.min),
-                counts=[[cell_counts[(i, j)] for i in range(nx)] for j in range(ny)],
+                # Cell index is row-major: k = j * nx + i.
+                counts=[[cell_counts[j * nx + i] for i in range(nx)] for j in range(ny)],
             )
         )
     return sorted(tables, key=lambda t: t.object_name)
@@ -254,7 +276,8 @@ def format_report(report: CoverageReport, max_nodes: int = 3) -> str:
 
 
 def _short_node(uri: str) -> str:
-    """'urn:physicalai:data:ds/episode/3/placement/cup' -> 'episode/3/placement/cup'."""
-    if uri.startswith("urn:physicalai:data:"):
-        return uri.split("/", 1)[-1]
+    """'http://taica.course/cp/data/ds/episode/3/object/cup' -> 'episode/3/object/cup'."""
+    prefix = "http://taica.course/cp/data/"
+    if uri.startswith(prefix):
+        return uri[len(prefix) :].split("/", 1)[-1]
     return uri.rsplit("#", 1)[-1]

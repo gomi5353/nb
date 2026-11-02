@@ -93,34 +93,23 @@ def cutlery_arranged(
     plate_cfg: SceneEntityCfg,
     fork_cfg: SceneEntityCfg,
     knife_cfg: SceneEntityCfg,
-    max_dist_xy: float,
+    side_offset: float,
+    half_size: float,
 ) -> torch.Tensor:
-    """Termination: fork at smaller x than the plate (robot's left), knife at larger x (robot's right),
-    both within max_dist_xy of the plate in the xy plane."""
-    plate: RigidObject = env.scene[plate_cfg.name]
-    fork: RigidObject = env.scene[fork_cfg.name]
-    knife: RigidObject = env.scene[knife_cfg.name]
+    """Success: fork and knife each inside a square of side ``2 * half_size`` beside the plate.
 
-    plate_pos = plate.data.root_pos_w - env.scene.env_origins
-    fork_pos = fork.data.root_pos_w - env.scene.env_origins
-    knife_pos = knife.data.root_pos_w - env.scene.env_origins
+    The square centres lie ``side_offset`` from the plate centre along x: the fork's at -x (the
+    robot faces +y, so -x is its left; the right side of the front camera image), the knife's at +x.
+    """
+    plate_pos = env.scene[plate_cfg.name].data.root_pos_w
+    fork_offset = env.scene[fork_cfg.name].data.root_pos_w[:, :2] - plate_pos[:, :2]
+    knife_offset = env.scene[knife_cfg.name].data.root_pos_w[:, :2] - plate_pos[:, :2]
 
-    done = torch.ones(env.num_envs, dtype=torch.bool, device=env.device)
-
-    fork_dist_xy = torch.norm(fork_pos[:, :2] - plate_pos[:, :2], dim=1)
-    knife_dist_xy = torch.norm(knife_pos[:, :2] - plate_pos[:, :2], dim=1)
-
-    done = torch.logical_and(done, fork_dist_xy <= max_dist_xy)
-    done = torch.logical_and(done, knife_dist_xy <= max_dist_xy)
-
-    # The robot faces +y, so its left is -x. In the front camera image this is the right side.
-    fork_on_left = fork_pos[:, 0] < plate_pos[:, 0]
-    knife_on_right = knife_pos[:, 0] > plate_pos[:, 0]
-
-    done = torch.logical_and(done, fork_on_left)
-    done = torch.logical_and(done, knife_on_right)
-
-    return done
+    fork_target = torch.tensor([-side_offset, 0.0], device=env.device)
+    knife_target = torch.tensor([side_offset, 0.0], device=env.device)
+    fork_in = torch.all(torch.abs(fork_offset - fork_target) <= half_size, dim=1)
+    knife_in = torch.all(torch.abs(knife_offset - knife_target) <= half_size, dim=1)
+    return torch.logical_and(fork_in, knife_in)
 
 
 @configclass
@@ -133,7 +122,8 @@ class TerminationsCfg(SingleArmFrankaTerminationsCfg):
             "plate_cfg": SceneEntityCfg("plate"),
             "fork_cfg": SceneEntityCfg("fork"),
             "knife_cfg": SceneEntityCfg("knife"),
-            "max_dist_xy": 0.15,
+            "side_offset": 0.12,  # square centre to plate centre (m)
+            "half_size": 0.05,  # 10 cm x 10 cm square
         },
     )
 

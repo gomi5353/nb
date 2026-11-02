@@ -1,0 +1,211 @@
+# SHACL rules for object position coverage.
+#
+# Severity:
+#   sh:Violation - dataset fails verification (malformed data, uncovered cell)
+#   sh:Warning   - reported, does not fail unless --strict (initial position
+#                  outside the required area: allowed, it just does not count)
+#
+# Every episode in the dataset counts toward coverage. The repo recorder
+# (LeRobotRecorderManager) saves successful episodes only.
+#
+# Requirement objects and episode objects are both cp:TaskObject; they are
+# matched by the nameValue of their cp:Name. Queries use plain triple patterns,
+# not property paths (a/b/c): rdflib evaluates paths several times slower.
+
+@prefix cp:   <http://taica.course/cp/ontology#> .
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+
+cp: a owl:Ontology ;
+    sh:declare [ sh:prefix "cp" ; sh:namespace "http://taica.course/cp/ontology#"^^xsd:anyURI ] .
+
+# ---- Episode: one index, one initial position per required object -----------
+
+cp:EpisodeShape a sh:NodeShape ;
+    sh:targetClass cp:Episode ;
+    sh:property [ sh:path cp:hasIndex ; sh:class cp:Index ; sh:minCount 1 ; sh:maxCount 1 ] ;
+    sh:property [ sh:path cp:hasTaskObject ; sh:node cp:EpisodeTaskObjectShape ] ;
+    sh:sparql [
+        sh:message "Episode has no initial position for required object '{?name}'" ;
+        sh:prefixes cp: ;
+        sh:select """
+            SELECT $this ?name WHERE {
+                ?req a cp:ObjectPositionAxisRequirement ; cp:hasTaskObject ?reqObj .
+                ?reqObj cp:hasName ?reqName . ?reqName cp:nameValue ?name .
+                FILTER NOT EXISTS {
+                    $this cp:hasTaskObject ?obj .
+                    ?obj cp:hasName ?objName ; cp:hasPosition ?p .
+                    ?objName cp:nameValue ?name .
+                }
+            }
+        """ ;
+    ] ;
+    sh:sparql [
+        sh:message "Episode has more than one task object named '{?name}'" ;
+        sh:prefixes cp: ;
+        sh:select """
+            SELECT $this ?name WHERE {
+                $this cp:hasTaskObject ?o1, ?o2 .
+                ?o1 cp:hasName ?n1 . ?n1 cp:nameValue ?name .
+                ?o2 cp:hasName ?n2 . ?n2 cp:nameValue ?name .
+                FILTER (STR(?o1) < STR(?o2))
+            }
+        """ ;
+    ] .
+
+# Objects an Episode points to carry the initial position; the requirement's
+# object does not, so this shape is applied through cp:EpisodeShape only.
+cp:EpisodeTaskObjectShape a sh:NodeShape ;
+    sh:property [ sh:path cp:hasName ; sh:class cp:Name ; sh:minCount 1 ; sh:maxCount 1 ] ;
+    sh:property [ sh:path cp:hasPosition ; sh:class cp:Position ; sh:minCount 1 ; sh:maxCount 1 ] .
+
+cp:IndexShape a sh:NodeShape ;
+    sh:targetClass cp:Index ;
+    sh:property [
+        sh:path cp:indexValue ;
+        sh:datatype xsd:nonNegativeInteger ; sh:minCount 1 ; sh:maxCount 1 ;
+    ] .
+
+cp:NameShape a sh:NodeShape ;
+    sh:targetClass cp:Name ;
+    sh:property [ sh:path cp:nameValue ; sh:datatype xsd:string ; sh:minCount 1 ; sh:maxCount 1 ] .
+
+# ---- Position: well-formed numbers, inside the required area -----------------
+
+cp:PositionShape a sh:NodeShape ;
+    sh:targetClass cp:Position ;
+    sh:property [ sh:path cp:positionX ; sh:datatype xsd:decimal ; sh:minCount 1 ; sh:maxCount 1 ] ;
+    sh:property [ sh:path cp:positionY ; sh:datatype xsd:decimal ; sh:minCount 1 ; sh:maxCount 1 ] .
+
+# Severity is a property of the shape, so the area check gets its own shape.
+cp:TaskObjectAreaShape a sh:NodeShape ;
+    sh:targetClass cp:TaskObject ;
+    sh:severity sh:Warning ;
+    sh:sparql [
+        sh:message "Initial position of '{?name}' at ({?x}, {?y}) is outside the required area; it does not count toward coverage" ;
+        sh:prefixes cp: ;
+        sh:select """
+            SELECT $this ?name ?x ?y WHERE {
+                ?episode a cp:Episode ; cp:hasTaskObject $this .
+                $this cp:hasName ?objName ; cp:hasPosition ?p .
+                ?objName cp:nameValue ?name .
+                ?p cp:positionX ?x ; cp:positionY ?y .
+                ?req a cp:ObjectPositionAxisRequirement ; cp:hasTaskObject ?reqObj ; cp:hasAreaConfiguration ?area .
+                ?reqObj cp:hasName ?reqName . ?reqName cp:nameValue ?name .
+                ?area cp:areaXMin ?x0 ; cp:areaXMax ?x1 ; cp:areaYMin ?y0 ; cp:areaYMax ?y1 .
+                FILTER (?x < ?x0 || ?x > ?x1 || ?y < ?y0 || ?y > ?y1)
+            }
+        """ ;
+    ] .
+
+# ---- Axis and requirement: well-formed spec ----------------------------------
+
+cp:ObjectPositionAxisShape a sh:NodeShape ;
+    sh:targetClass cp:ObjectPositionAxis ;
+    sh:property [ sh:path cp:hasRequirement ; sh:class cp:ObjectPositionAxisRequirement ] ;
+    sh:property [ sh:path cp:hasDataset ; sh:class cp:Dataset ] .
+
+cp:ObjectPositionAxisRequirementShape a sh:NodeShape ;
+    sh:targetClass cp:ObjectPositionAxisRequirement ;
+    sh:property [
+        sh:path cp:hasTaskObject ;
+        sh:class cp:TaskObject ; sh:minCount 1 ; sh:maxCount 1 ;
+        sh:node cp:RequirementTaskObjectShape ;
+    ] ;
+    sh:property [ sh:path cp:hasAreaConfiguration ; sh:class cp:AreaConfiguration ; sh:minCount 1 ; sh:maxCount 1 ] ;
+    sh:property [ sh:path cp:minEpisodesPerCell ; sh:minCount 1 ; sh:maxCount 1 ; sh:minInclusive 0 ] ;
+    sh:sparql [
+        sh:message "Requirement is not linked from an ObjectPositionAxis (cp:hasRequirement)" ;
+        sh:prefixes cp: ;
+        sh:select """
+            SELECT $this WHERE {
+                FILTER NOT EXISTS { ?axis a cp:ObjectPositionAxis ; cp:hasRequirement $this . }
+            }
+        """ ;
+    ] .
+
+cp:RequirementTaskObjectShape a sh:NodeShape ;
+    sh:property [ sh:path cp:hasName ; sh:class cp:Name ; sh:minCount 1 ; sh:maxCount 1 ] .
+
+cp:AreaConfigurationShape a sh:NodeShape ;
+    sh:targetClass cp:AreaConfiguration ;
+    sh:property [ sh:path cp:areaXMin ; sh:minCount 1 ; sh:maxCount 1 ] ;
+    sh:property [ sh:path cp:areaXMax ; sh:minCount 1 ; sh:maxCount 1 ] ;
+    sh:property [ sh:path cp:areaYMin ; sh:minCount 1 ; sh:maxCount 1 ] ;
+    sh:property [ sh:path cp:areaYMax ; sh:minCount 1 ; sh:maxCount 1 ] ;
+    sh:property [ sh:path cp:hasCoverageGrid ; sh:class cp:CoverageGrid ; sh:minCount 1 ; sh:maxCount 1 ] ;
+    sh:sparql [
+        sh:message "Coverage area is empty: areaXMin must be < areaXMax and areaYMin < areaYMax" ;
+        sh:prefixes cp: ;
+        sh:select """
+            SELECT $this WHERE {
+                $this cp:areaXMin ?x0 ; cp:areaXMax ?x1 ; cp:areaYMin ?y0 ; cp:areaYMax ?y1 .
+                FILTER (?x0 >= ?x1 || ?y0 >= ?y1)
+            }
+        """ ;
+    ] .
+
+cp:CoverageGridShape a sh:NodeShape ;
+    sh:targetClass cp:CoverageGrid ;
+    sh:property [ sh:path cp:numCellW ; sh:minCount 1 ; sh:maxCount 1 ; sh:minInclusive 1 ] ;
+    sh:property [ sh:path cp:numCellH ; sh:minCount 1 ; sh:maxCount 1 ; sh:minInclusive 1 ] ;
+    sh:sparql [
+        sh:message "Coverage grid has {?n} cell(s); numCellW * numCellH = {?expected}" ;
+        sh:prefixes cp: ;
+        sh:select """
+            SELECT $this ?expected (COUNT(DISTINCT ?cell) AS ?n) WHERE {
+                $this cp:numCellW ?w ; cp:numCellH ?h .
+                BIND (?w * ?h AS ?expected)
+                OPTIONAL { $this cp:hasCell ?cell . }
+            }
+            GROUP BY $this ?expected
+            HAVING (COUNT(DISTINCT ?cell) != ?expected)
+        """ ;
+    ] .
+
+# ---- Cell: the coverage rule itself -------------------------------------------
+# Cell k is column i = k mod numCellW, row j = floor(k / numCellW). Its bounds are
+# areaXMin + i * (areaXMax - areaXMin) / numCellW, and the same for y. A position
+# is in the cell when x0 <= x < x1 (x <= x1 on the last column), same for y.
+# Cells with fewer episodes than minEpisodesPerCell fail. Cells of an empty area
+# are skipped (cp:AreaConfigurationShape reports the area).
+
+cp:CellShape a sh:NodeShape ;
+    sh:targetClass cp:Cell ;
+    sh:property [ sh:path cp:hasIndex ; sh:class cp:Index ; sh:minCount 1 ; sh:maxCount 1 ] ;
+    sh:sparql [
+        sh:message "'{?name}' cell (i={?i}, j={?j}) x=[{?sx0}, {?sx1}] y=[{?sy0}, {?sy1}] has {?n} episode(s); needs at least {?min}" ;
+        sh:prefixes cp: ;
+        sh:select """
+            SELECT $this ?name ?i ?j ?sx0 ?sx1 ?sy0 ?sy1 ?min (COUNT(DISTINCT ?episode) AS ?n) WHERE {
+                $this cp:hasIndex ?index . ?index cp:indexValue ?k .
+                ?grid cp:hasCell $this ; cp:numCellW ?nw ; cp:numCellH ?nh .
+                ?area cp:hasCoverageGrid ?grid ;
+                      cp:areaXMin ?ax0 ; cp:areaXMax ?ax1 ; cp:areaYMin ?ay0 ; cp:areaYMax ?ay1 .
+                ?req cp:hasAreaConfiguration ?area ; cp:minEpisodesPerCell ?min ; cp:hasTaskObject ?reqObj .
+                ?reqObj cp:hasName ?reqName . ?reqName cp:nameValue ?name .
+                FILTER (?ax0 < ?ax1 && ?ay0 < ?ay1)
+                BIND (xsd:integer(FLOOR(?k / ?nw)) AS ?j)
+                BIND (?k - ?nw * ?j AS ?i)
+                BIND (?ax0 + ?i * (?ax1 - ?ax0) / ?nw AS ?x0)
+                BIND (IF(?i = ?nw - 1, ?ax1, ?ax0 + (?i + 1) * (?ax1 - ?ax0) / ?nw) AS ?x1)
+                BIND (?ay0 + ?j * (?ay1 - ?ay0) / ?nh AS ?y0)
+                BIND (IF(?j = ?nh - 1, ?ay1, ?ay0 + (?j + 1) * (?ay1 - ?ay0) / ?nh) AS ?y1)
+                BIND (ROUND(?x0 * 1000000) / 1000000 AS ?sx0)
+                BIND (ROUND(?x1 * 1000000) / 1000000 AS ?sx1)
+                BIND (ROUND(?y0 * 1000000) / 1000000 AS ?sy0)
+                BIND (ROUND(?y1 * 1000000) / 1000000 AS ?sy1)
+                OPTIONAL {
+                    ?episode a cp:Episode ; cp:hasTaskObject ?obj .
+                    ?obj cp:hasName ?objName ; cp:hasPosition ?p .
+                    ?objName cp:nameValue ?name .
+                    ?p cp:positionX ?x ; cp:positionY ?y .
+                    FILTER (?x >= ?x0 && (?x < ?x1 || (?i = ?nw - 1 && ?x = ?x1)) &&
+                            ?y >= ?y0 && (?y < ?y1 || (?j = ?nh - 1 && ?y = ?y1)))
+                }
+            }
+            GROUP BY $this ?name ?i ?j ?sx0 ?sx1 ?sy0 ?sy1 ?min
+            HAVING (COUNT(DISTINCT ?episode) < ?min)
+        """ ;
+    ] .

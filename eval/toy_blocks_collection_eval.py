@@ -8,6 +8,7 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.sim.schemas import MassPropertiesCfg
 from isaaclab.utils import configclass
+from isaaclab.utils.math import quat_apply_inverse
 from isaaclab.utils.seed import configure_seed
 
 from leisaac.utils.domain_randomization import domain_randomization
@@ -83,7 +84,7 @@ class ToyBlocksCollectionEvalSceneCfg(SingleArmFrankaTaskSceneCfg):
         prim_path="{ENV_REGEX_NS}/Scene/storage_box",
         init_state=RigidObjectCfg.InitialStateCfg(
             pos=(3.0, 0.8, 0.36348),
-            rot=(1.0, 0.0, 0.0, 0.0),
+            rot=(0.707, 0.0, 0.0, 0.707),
         ),
         spawn=sim_utils.UsdFileCfg(
             usd_path=str(LIVING_OBJECTS_ROOT / "Storage_Box" / "storage_box.usd"),
@@ -92,7 +93,7 @@ class ToyBlocksCollectionEvalSceneCfg(SingleArmFrankaTaskSceneCfg):
     )
 
 
-# Success when all three blocks lie within (x,y,z)_range bounds relative to storage_box.
+# Success when all three blocks lie within (x,y,z)_range of storage_box, in the box frame.
 def toys_in_box(
     env,
     green_block_cfg: SceneEntityCfg,
@@ -103,25 +104,23 @@ def toys_in_box(
     y_range: tuple[float, float],
     z_range: tuple[float, float],
 ) -> torch.Tensor:
-    green_block: RigidObject = env.scene[green_block_cfg.name]
-    blue_block: RigidObject = env.scene[blue_block_cfg.name]
-    red_block: RigidObject = env.scene[red_block_cfg.name]
-    storage_box: RigidObject = env.scene[storage_box_cfg.name]
+    """Success: every block root within (x, y, z)_range of the storage box root, in the box's own frame.
 
-    green_block_pos = green_block.data.root_pos_w - env.scene.env_origins
-    blue_block_pos = blue_block.data.root_pos_w - env.scene.env_origins
-    red_block_pos = red_block.data.root_pos_w - env.scene.env_origins
-    storage_box_pos = storage_box.data.root_pos_w - env.scene.env_origins
+    The block offset from the box root is rotated into the box frame, so the ranges follow the box
+    when it is rotated (for example yawed by 90 degrees).
+    """
+    storage_box: RigidObject = env.scene[storage_box_cfg.name]
+    box_pos = storage_box.data.root_pos_w
+    box_quat = storage_box.data.root_quat_w
 
     done = torch.ones(env.num_envs, dtype=torch.bool, device=env.device)
 
-    for toy_pos in (green_block_pos, blue_block_pos, red_block_pos):
-        done = torch.logical_and(done, toy_pos[:, 0] < storage_box_pos[:, 0] + x_range[1])
-        done = torch.logical_and(done, toy_pos[:, 0] > storage_box_pos[:, 0] + x_range[0])
-        done = torch.logical_and(done, toy_pos[:, 1] < storage_box_pos[:, 1] + y_range[1])
-        done = torch.logical_and(done, toy_pos[:, 1] > storage_box_pos[:, 1] + y_range[0])
-        done = torch.logical_and(done, toy_pos[:, 2] < storage_box_pos[:, 2] + z_range[1])
-        done = torch.logical_and(done, toy_pos[:, 2] > storage_box_pos[:, 2] + z_range[0])
+    for block_cfg in (green_block_cfg, blue_block_cfg, red_block_cfg):
+        block: RigidObject = env.scene[block_cfg.name]
+        offset = quat_apply_inverse(box_quat, block.data.root_pos_w - box_pos)
+        for axis, (low, high) in enumerate((x_range, y_range, z_range)):
+            done = torch.logical_and(done, offset[:, axis] > low)
+            done = torch.logical_and(done, offset[:, axis] < high)
 
     return done
 
@@ -135,9 +134,12 @@ class EvalTerminationsCfg(SingleArmFrankaTerminationsCfg):
             "blue_block_cfg": SceneEntityCfg("blue_block"),
             "red_block_cfg": SceneEntityCfg("red_block"),
             "storage_box_cfg": SceneEntityCfg("storage_box"),
-            "x_range": (-0.12, 0.12),
-            "y_range": (-0.12, 0.12),
-            "z_range": (-0.08, 0.08),
+            # Ranges in the storage box's own frame. Footprint relative to its root (measured: x -0.1525..0.1432,
+            # y -0.1059..0.1032, i.e. 0.296 m x 0.209 m), shrunk by 1 cm on every side so a block must be
+            # inside the walls. z: above the box root (box bottom) and below it + 11 cm (box is 0.109 m tall).
+            "x_range": (-0.1425, 0.1332),
+            "y_range": (-0.0959, 0.0932),
+            "z_range": (0.0, 0.11),
         },
     )
 

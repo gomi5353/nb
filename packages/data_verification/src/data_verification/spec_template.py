@@ -7,7 +7,7 @@ from importlib.resources import files
 from pathlib import Path
 
 from .dataset import DatasetPlacements
-from .graph import DV
+from .graph import CP
 
 BEGIN = "# --- BEGIN OBJECT ---\n"
 END = "# --- END OBJECT ---\n"
@@ -15,7 +15,7 @@ PLACEHOLDER = "OBJECT_NAME"
 
 
 def template_text() -> str:
-    return files("data_verification").joinpath("templates", "object_pose_coverage_spec.ttl").read_text()
+    return files("data_verification").joinpath("templates", "object_position_coverage_spec.ttl").read_text()
 
 
 def render_spec(object_names: list[str], observed: DatasetPlacements | None = None, dataset_label: str = "") -> str:
@@ -47,7 +47,7 @@ def write_spec(path: str | Path, object_names: list[str], observed: DatasetPlace
 def _observed_note(name: str, observed: DatasetPlacements, dataset_label: str) -> str:
     points = [p for p in observed.placements if p.object_name == name and p.is_finite]
     if not points:
-        return f"# Not recorded in {dataset_label or 'the dataset'} (no object_pose.{name} values).\n"
+        return f"# Not recorded in {dataset_label or 'the dataset'} (no object_position.{name} values).\n"
     xs, ys = [p.x for p in points], [p.y for p in points]
     return (
         f"# Already in {dataset_label or 'the dataset'}: {len(points)} episode(s), initial "
@@ -60,32 +60,36 @@ def todo_fields(graph) -> list[str]:
     fields = []
     for subject, predicate, value in graph:
         if str(value) == "TODO":
-            obj = graph.value(subject, DV.forObject)
-            name = graph.value(obj, DV.objectName) if obj is not None else None
-            fields.append(f"{name or subject}: {predicate.split('#')[-1]}")
+            fields.append(f"{requirement_object_name(graph, subject) or subject}: {predicate.split('#')[-1]}")
     return sorted(fields)
 
 
+def requirement_object_name(graph, node) -> str | None:
+    """Name of the task object whose requirement owns ``node`` (requirement, area or grid)."""
+    if (None, CP.hasCoverageGrid, node) in graph:
+        node = graph.value(None, CP.hasCoverageGrid, node)
+    if (None, CP.hasAreaConfiguration, node) in graph:
+        node = graph.value(None, CP.hasAreaConfiguration, node)
+    obj = graph.value(node, CP.hasTaskObject)
+    name = graph.value(graph.value(obj, CP.hasName), CP.nameValue) if obj is not None else None
+    return None if name is None else str(name)
 
-_NUMBER_FIELDS = ("xMin", "xMax", "yMin", "yMax")
-_WHOLE_NUMBER_FIELDS = ("gridX", "gridY", "minEpisodesPerCell")
+
+_NUMBER_FIELDS = ("areaXMin", "areaXMax", "areaYMin", "areaYMax")
+_WHOLE_NUMBER_FIELDS = ("numCellW", "numCellH", "minEpisodesPerCell")
 
 
 def value_type_errors(graph) -> list[str]:
-    """Requirement values that are not numbers (e.g. still quoted)."""
-    from rdflib import RDF
-
+    """Requirement, area and grid values that are not numbers (e.g. still quoted)."""
     errors = []
-    for req in graph.subjects(RDF.type, DV.CoverageRequirement):
-        obj = graph.value(req, DV.forObject)
-        name = graph.value(obj, DV.objectName) if obj is not None else req
-        for field in _NUMBER_FIELDS + _WHOLE_NUMBER_FIELDS:
-            for value in graph.objects(req, DV[field]):
-                python_value = value.toPython()
-                whole = field in _WHOLE_NUMBER_FIELDS
-                ok = isinstance(python_value, int) if whole else isinstance(python_value, (int, float, Decimal))
-                if isinstance(python_value, bool) or not ok:
-                    kind = "a whole number" if whole else "a number"
-                    shown = f'"{value}"' if isinstance(python_value, str) else str(value)
-                    errors.append(f"{name}: {field} must be {kind} without quotes, got {shown}")
+    for field in _NUMBER_FIELDS + _WHOLE_NUMBER_FIELDS:
+        for subject, value in graph.subject_objects(CP[field]):
+            python_value = value.toPython()
+            whole = field in _WHOLE_NUMBER_FIELDS
+            ok = isinstance(python_value, int) if whole else isinstance(python_value, (int, float, Decimal))
+            if isinstance(python_value, bool) or not ok:
+                kind = "a whole number" if whole else "a number"
+                shown = f'"{value}"' if isinstance(python_value, str) else str(value)
+                name = requirement_object_name(graph, subject) or subject
+                errors.append(f"{name}: {field} must be {kind} without quotes, got {shown}")
     return sorted(errors)

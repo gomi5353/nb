@@ -2,7 +2,7 @@
 
 Only ``meta/info.json`` and the ``data/**/*.parquet`` shards are read; videos
 are never decoded. The initial placement of an object in an episode is its
-``object_pose.<name>`` value in that episode's first recorded frame (lowest
+``object_position.<name>`` value in that episode's first recorded frame (lowest
 ``frame_index``), whatever the collection pipeline was and whether the
 episode succeeded or failed.
 """
@@ -18,13 +18,13 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-# Keep in sync with simulator.utils.object_pose_recording.
-OBJECT_POSE_KEY_PREFIX = "object_pose."
-OBJECT_POSE_NAMES = ["x", "y", "z", "qw", "qx", "qy", "qz"]
+# Keep in sync with simulator.utils.lerobot_recorder.
+OBJECT_POSITION_KEY_PREFIX = "object_position."
+OBJECT_POSITION_NAMES = ["x", "y", "z"]
 
 
 class DatasetError(ValueError):
-    """The dataset cannot be read for object pose verification."""
+    """The dataset cannot be read for object position verification."""
 
 
 @dataclass(frozen=True)
@@ -55,21 +55,21 @@ def read_initial_placements(dataset_root: str | Path) -> DatasetPlacements:
         raise DatasetError(f"Not a LeRobot dataset: {info_path} does not exist")
     features = json.loads(info_path.read_text()).get("features", {})
 
-    pose_keys = sorted(k for k in features if k.startswith(OBJECT_POSE_KEY_PREFIX))
-    if not pose_keys:
+    position_keys = sorted(k for k in features if k.startswith(OBJECT_POSITION_KEY_PREFIX))
+    if not position_keys:
         raise DatasetError(
-            f"meta/info.json declares no '{OBJECT_POSE_KEY_PREFIX}<name>' features; "
-            "record object poses (see simulator.utils.object_pose_recording)"
+            f"meta/info.json declares no '{OBJECT_POSITION_KEY_PREFIX}<name>' features; "
+            "record with simulator.utils.lerobot_recorder.LeRobotRecorderManager, not leisaac's recorder"
         )
-    for key in pose_keys:
+    for key in position_keys:
         shape = list(features[key].get("shape", []))
-        if shape != [len(OBJECT_POSE_NAMES)]:
-            raise DatasetError(f"Feature '{key}' has shape {shape}; expected [{len(OBJECT_POSE_NAMES)}]")
+        if shape != [len(OBJECT_POSITION_NAMES)]:
+            raise DatasetError(f"Feature '{key}' has shape {shape}; expected [{len(OBJECT_POSITION_NAMES)}]")
 
     shards = sorted((root / "data").glob("**/*.parquet"))
     if not shards:
         raise DatasetError(f"No parquet shards under {root / 'data'}")
-    columns = ["episode_index", "frame_index", *pose_keys]
+    columns = ["episode_index", "frame_index", *position_keys]
     tables = []
     for shard in shards:
         missing = sorted(set(columns) - set(pq.read_schema(shard).names))
@@ -84,18 +84,18 @@ def read_initial_placements(dataset_root: str | Path) -> DatasetPlacements:
     episode_ids, first = np.unique(episodes[order], return_index=True)
     first_rows = table.take(pa.array(order[first])).to_pydict()
 
-    object_names = [key[len(OBJECT_POSE_KEY_PREFIX) :] for key in pose_keys]
+    object_names = [key[len(OBJECT_POSITION_KEY_PREFIX) :] for key in position_keys]
     placements = []
     for row, episode_index in enumerate(first_rows["episode_index"]):
-        for key, name in zip(pose_keys, object_names):
-            pose = first_rows[key][row]
+        for key, name in zip(position_keys, object_names):
+            position = first_rows[key][row]
             placements.append(
                 InitialPlacement(
                     episode_index=int(episode_index),
                     object_name=name,
-                    x=float("nan") if pose is None else float(pose[0]),
-                    y=float("nan") if pose is None else float(pose[1]),
-                    z=float("nan") if pose is None else float(pose[2]),
+                    x=float("nan") if position is None else float(position[0]),
+                    y=float("nan") if position is None else float(position[1]),
+                    z=float("nan") if position is None else float(position[2]),
                 )
             )
     return DatasetPlacements(

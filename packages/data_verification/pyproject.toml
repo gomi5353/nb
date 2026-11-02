@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "data-verification"
 version = "0.1.0"
-description = "Offline RDF/OWL + SHACL verification of LeRobot datasets (object pose coverage)."
+description = "Offline RDF/OWL + SHACL verification of LeRobot datasets (object position coverage)."
 requires-python = ">=3.10"
 dependencies = [
     "numpy",
