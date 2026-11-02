@@ -8,7 +8,7 @@ from importlib.resources import files
 from pathlib import Path
 
 from pyshacl import validate
-from rdflib import RDF, Graph, Namespace
+from rdflib import RDF, XSD, Graph, Namespace
 
 from .dataset import DatasetError, read_initial_placements
 from .graph import CP, add_dataset, expand_cells
@@ -16,29 +16,49 @@ from .spec_template import todo_fields, value_type_errors
 
 SH = Namespace("http://www.w3.org/ns/shacl#")
 
-# Same membership rule as cp:CoverageCellShape, without the HAVING filter.
+# Same cell bounds and membership rule as cp:CellShape, without the HAVING filter.
 _CELL_COUNTS_QUERY = """
-SELECT ?name ?i ?j ?min (COUNT(DISTINCT ?p) AS ?n) WHERE {
-    ?cell a cp:CoverageCell ; cp:ofRequirement ?req ; cp:cellI ?i ; cp:cellJ ?j ;
-          cp:xMin ?x0 ; cp:xMax ?x1 ; cp:yMin ?y0 ; cp:yMax ?y1 ;
-          cp:xMaxInclusive ?xi ; cp:yMaxInclusive ?yi .
-    ?req cp:forObject ?obj ; cp:minEpisodesPerCell ?min .
-    ?obj cp:objectName ?name .
+SELECT ?req ?k (COUNT(DISTINCT ?episode) AS ?n) WHERE {
+    ?cell a cp:Cell ; cp:hasIndex ?index .
+    ?index cp:indexValue ?k .
+    ?grid cp:hasCell ?cell ; cp:numCellW ?nw ; cp:numCellH ?nh .
+    ?area cp:hasCoverageGrid ?grid ;
+          cp:areaXMin ?ax0 ; cp:areaXMax ?ax1 ; cp:areaYMin ?ay0 ; cp:areaYMax ?ay1 .
+    ?req cp:hasAreaConfiguration ?area ; cp:hasTaskObject ?reqObj .
+    ?reqObj cp:hasName ?reqName . ?reqName cp:nameValue ?name .
+    BIND (xsd:integer(FLOOR(?k / ?nw)) AS ?j)
+    BIND (?k - ?nw * ?j AS ?i)
+    BIND (?ax0 + ?i * (?ax1 - ?ax0) / ?nw AS ?x0)
+    BIND (IF(?i = ?nw - 1, ?ax1, ?ax0 + (?i + 1) * (?ax1 - ?ax0) / ?nw) AS ?x1)
+    BIND (?ay0 + ?j * (?ay1 - ?ay0) / ?nh AS ?y0)
+    BIND (IF(?j = ?nh - 1, ?ay1, ?ay0 + (?j + 1) * (?ay1 - ?ay0) / ?nh) AS ?y1)
     OPTIONAL {
-        ?p cp:ofObject ?obj ; cp:x ?x ; cp:y ?y .
-        FILTER (?x >= ?x0 && (?x < ?x1 || (?xi && ?x = ?x1)) &&
-                ?y >= ?y0 && (?y < ?y1 || (?yi && ?y = ?y1)))
+        ?episode a cp:Episode ; cp:hasTaskObject ?obj .
+        ?obj cp:hasName ?objName ; cp:hasPosition ?p .
+        ?objName cp:nameValue ?name .
+        ?p cp:positionX ?x ; cp:positionY ?y .
+        FILTER (?x >= ?x0 && (?x < ?x1 || (?i = ?nw - 1 && ?x = ?x1)) &&
+                ?y >= ?y0 && (?y < ?y1 || (?j = ?nh - 1 && ?y = ?y1)))
     }
 }
-GROUP BY ?name ?i ?j ?min
+GROUP BY ?req ?k
 """
 
 _REQUIREMENTS_QUERY = """
-SELECT ?name ?x0 ?x1 ?y0 ?y1 ?nx ?ny ?min WHERE {
-    ?req a cp:CoverageRequirement ; cp:forObject ?obj ;
-         cp:xMin ?x0 ; cp:xMax ?x1 ; cp:yMin ?y0 ; cp:yMax ?y1 ;
-         cp:gridX ?nx ; cp:gridY ?ny ; cp:minEpisodesPerCell ?min .
-    ?obj cp:objectName ?name .
+SELECT ?req ?name ?x0 ?x1 ?y0 ?y1 ?nx ?ny ?min WHERE {
+    ?req a cp:ObjectPositionAxisRequirement ; cp:hasTaskObject ?reqObj ;
+         cp:minEpisodesPerCell ?min ; cp:hasAreaConfiguration ?area .
+    ?reqObj cp:hasName ?reqName . ?reqName cp:nameValue ?name .
+    ?area cp:areaXMin ?x0 ; cp:areaXMax ?x1 ; cp:areaYMin ?y0 ; cp:areaYMax ?y1 ;
+          cp:hasCoverageGrid ?grid .
+    ?grid cp:numCellW ?nx ; cp:numCellH ?ny .
+}
+"""
+
+_REQUIRED_NAMES_QUERY = """
+SELECT DISTINCT ?name WHERE {
+    ?req a cp:ObjectPositionAxisRequirement ; cp:hasTaskObject ?reqObj .
+    ?reqObj cp:hasName ?reqName . ?reqName cp:nameValue ?name .
 }
 """
 
@@ -126,8 +146,8 @@ def build_verification_graph(dataset_root: str | Path, spec: str | Path) -> tupl
     if type_errors:
         report.errors.extend(type_errors)
         return graph, report
-    if not any(graph.subjects(RDF.type, CP.CoverageRequirement)):
-        report.errors.append("Spec declares no cp:CoverageRequirement; nothing to check")
+    if not any(graph.subjects(RDF.type, CP.ObjectPositionAxisRequirement)):
+        report.errors.append("Spec declares no cp:ObjectPositionAxisRequirement; nothing to check")
     expand_cells(graph)
 
     try:
@@ -139,7 +159,7 @@ def build_verification_graph(dataset_root: str | Path, spec: str | Path) -> tupl
     report.num_episodes = len(data.episode_indices)
     if not data.episode_indices:
         report.errors.append("Dataset contains no episodes")
-    required = {str(graph.value(obj, CP.objectName)) for obj in graph.objects(None, CP.forObject)}
+    required = {str(row.name) for row in graph.query(_REQUIRED_NAMES_QUERY, initNs={"cp": CP})}
     for name in sorted(required - set(data.object_names)):
         report.errors.append(f"Dataset has no 'object_position.{name}' column, which the spec requires")
     bad = [p for p in data.placements if not p.is_finite]
@@ -165,7 +185,8 @@ def verify_object_position_coverage(
     """Check ``dataset_root`` against ``spec``; ``extra_shapes`` adds your own SHACL rules.
 
     ``graph_out`` also writes the data graph that SHACL validates (spec, generated
-    cells, episodes, initial placements) as Turtle, for inspection or SPARQL.
+    cells, episodes, task objects and their initial positions) as Turtle, for
+    inspection or SPARQL.
     """
     graph, report = build_verification_graph(dataset_root, spec)
     if graph_out is not None:  # also when empty, so an old file never looks current
@@ -206,19 +227,20 @@ def verify_object_position_coverage(
 
 def _coverage_tables(graph: Graph) -> list[ObjectCoverage]:
     counts: dict[str, Counter] = {}
-    for row in graph.query(_CELL_COUNTS_QUERY, initNs={"cp": CP}):
-        counts.setdefault(str(row.name), Counter())[(int(row.i), int(row.j))] = int(row.n)
+    for row in graph.query(_CELL_COUNTS_QUERY, initNs={"cp": CP, "xsd": XSD}):
+        counts.setdefault(str(row.req), Counter())[int(row.k)] = int(row.n)
     tables = []
     for row in graph.query(_REQUIREMENTS_QUERY, initNs={"cp": CP}):
-        name, nx, ny = str(row.name), int(row.nx), int(row.ny)
-        cell_counts = counts.get(name, Counter())
+        nx, ny = int(row.nx), int(row.ny)
+        cell_counts = counts.get(str(row.req), Counter())
         tables.append(
             ObjectCoverage(
-                object_name=name,
+                object_name=str(row.name),
                 x_range=(float(row.x0), float(row.x1)),
                 y_range=(float(row.y0), float(row.y1)),
                 min_episodes_per_cell=int(row.min),
-                counts=[[cell_counts[(i, j)] for i in range(nx)] for j in range(ny)],
+                # Cell index is row-major: k = j * nx + i.
+                counts=[[cell_counts[j * nx + i] for i in range(nx)] for j in range(ny)],
             )
         )
     return sorted(tables, key=lambda t: t.object_name)
@@ -254,7 +276,8 @@ def format_report(report: CoverageReport, max_nodes: int = 3) -> str:
 
 
 def _short_node(uri: str) -> str:
-    """'http://taica.course/cp/data/ds/episode/3/placement/cup' -> 'episode/3/placement/cup'."""
-    if uri.startswith("http://taica.course/cp/data/"):
-        return uri.split("/", 1)[-1]
+    """'http://taica.course/cp/data/ds/episode/3/object/cup' -> 'episode/3/object/cup'."""
+    prefix = "http://taica.course/cp/data/"
+    if uri.startswith(prefix):
+        return uri[len(prefix) :].split("/", 1)[-1]
     return uri.rsplit("#", 1)[-1]

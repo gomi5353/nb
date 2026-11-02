@@ -163,13 +163,23 @@ Parquet row order is not guaranteed. The object-position reader sorts by
 
 A clearly named ontology goes under
 `packages/data_verification/src/data_verification/ontology/`, such as
-`lighting.ttl`. A minimal vocabulary:
+`lighting.ttl`. A new factor is a new generalization axis: its axis class
+subclasses `cp:GeneralizationAxis` and its requirement class subclasses
+`cp:AxisRequirement`, so it reuses `cp:hasRequirement` and `cp:hasDataset`
+from `object_position.ttl` (both allow any `cp:GeneralizationAxis`). Episodes,
+their `cp:Index`, and the dataset are shared with the object-position factor.
+A minimal vocabulary:
 
 ```turtle
 @prefix cp:   <http://taica.course/cp/ontology#> .
 @prefix owl:  <http://www.w3.org/2002/07/owl#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+cp:LightingAxis a owl:Class ;
+    rdfs:subClassOf cp:GeneralizationAxis .
+cp:LightingAxisRequirement a owl:Class ;
+    rdfs:subClassOf cp:AxisRequirement .
 
 cp:LightingCondition a owl:Class .
 cp:hasLightingCondition a owl:ObjectProperty ;
@@ -178,7 +188,6 @@ cp:hasLightingCondition a owl:ObjectProperty ;
 cp:lightIntensityLux a owl:DatatypeProperty ;
     rdfs:domain cp:LightingCondition ;
     rdfs:range xsd:double .
-cp:LightingCoverageRequirement a owl:Class .
 ```
 
 OWL defines the concepts and relationships; executable constraints belong in
@@ -194,6 +203,7 @@ example:
 
 ```turtle
 data:episode_7 a cp:Episode ;
+    cp:hasIndex data:episode_7_index ;
     cp:hasLightingCondition data:episode_7_lighting .
 
 data:episode_7_lighting a cp:LightingCondition ;
@@ -214,7 +224,10 @@ A template goes under
 @prefix cp:   <http://taica.course/cp/ontology#> .
 @prefix spec: <http://taica.course/cp/spec/lighting#> .
 
-spec:lighting a cp:LightingCoverageRequirement ;
+spec:lighting_axis a cp:LightingAxis ;
+    cp:hasRequirement spec:lighting .
+
+spec:lighting a cp:LightingAxisRequirement ;
     cp:minLux 300.0 ;
     cp:maxLux 900.0 ;
     cp:numberOfBins 3 ;
@@ -231,9 +244,10 @@ meant to detect.
 **Required**
 
 `expand_cells()` in
-[`graph.py`](../packages/data_verification/src/data_verification/graph.py) turns a
-two-dimensional object-position region into cells. The extension adds an
-equivalent expansion function:
+[`graph.py`](../packages/data_verification/src/data_verification/graph.py) adds
+`numCellW × numCellH` cells to each object-position grid; each cell stores only
+its row-major `cp:Index`, and the SHACL rule computes its bounds from the area.
+The extension adds an equivalent expansion function:
 
 - numeric factor: intervals;
 - two-dimensional factor: cells;

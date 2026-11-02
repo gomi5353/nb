@@ -2,7 +2,8 @@
 """Check how well a LeRobot dataset covers object initial positions, against your own spec.
 
 Reads only meta/info.json and data/**/*.parquet (no simulator, no videos).
-Every episode counts, successful or failed. Guide: docs/object_position_coverage.md
+Every episode in the dataset counts (the repo recorder saves successful episodes only).
+Guide: docs/object_position_coverage.md
 
   # 1. Create a spec skeleton (one block per object_position.* column in the dataset)
   uv run python scripts/verify_object_position_coverage.py init \\

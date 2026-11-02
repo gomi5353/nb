@@ -60,32 +60,36 @@ def todo_fields(graph) -> list[str]:
     fields = []
     for subject, predicate, value in graph:
         if str(value) == "TODO":
-            obj = graph.value(subject, CP.forObject)
-            name = graph.value(obj, CP.objectName) if obj is not None else None
-            fields.append(f"{name or subject}: {predicate.split('#')[-1]}")
+            fields.append(f"{requirement_object_name(graph, subject) or subject}: {predicate.split('#')[-1]}")
     return sorted(fields)
 
 
+def requirement_object_name(graph, node) -> str | None:
+    """Name of the task object whose requirement owns ``node`` (requirement, area or grid)."""
+    if (None, CP.hasCoverageGrid, node) in graph:
+        node = graph.value(None, CP.hasCoverageGrid, node)
+    if (None, CP.hasAreaConfiguration, node) in graph:
+        node = graph.value(None, CP.hasAreaConfiguration, node)
+    obj = graph.value(node, CP.hasTaskObject)
+    name = graph.value(graph.value(obj, CP.hasName), CP.nameValue) if obj is not None else None
+    return None if name is None else str(name)
 
-_NUMBER_FIELDS = ("xMin", "xMax", "yMin", "yMax")
-_WHOLE_NUMBER_FIELDS = ("gridX", "gridY", "minEpisodesPerCell")
+
+_NUMBER_FIELDS = ("areaXMin", "areaXMax", "areaYMin", "areaYMax")
+_WHOLE_NUMBER_FIELDS = ("numCellW", "numCellH", "minEpisodesPerCell")
 
 
 def value_type_errors(graph) -> list[str]:
-    """Requirement values that are not numbers (e.g. still quoted)."""
-    from rdflib import RDF
-
+    """Requirement, area and grid values that are not numbers (e.g. still quoted)."""
     errors = []
-    for req in graph.subjects(RDF.type, CP.CoverageRequirement):
-        obj = graph.value(req, CP.forObject)
-        name = graph.value(obj, CP.objectName) if obj is not None else req
-        for field in _NUMBER_FIELDS + _WHOLE_NUMBER_FIELDS:
-            for value in graph.objects(req, CP[field]):
-                python_value = value.toPython()
-                whole = field in _WHOLE_NUMBER_FIELDS
-                ok = isinstance(python_value, int) if whole else isinstance(python_value, (int, float, Decimal))
-                if isinstance(python_value, bool) or not ok:
-                    kind = "a whole number" if whole else "a number"
-                    shown = f'"{value}"' if isinstance(python_value, str) else str(value)
-                    errors.append(f"{name}: {field} must be {kind} without quotes, got {shown}")
+    for field in _NUMBER_FIELDS + _WHOLE_NUMBER_FIELDS:
+        for subject, value in graph.subject_objects(CP[field]):
+            python_value = value.toPython()
+            whole = field in _WHOLE_NUMBER_FIELDS
+            ok = isinstance(python_value, int) if whole else isinstance(python_value, (int, float, Decimal))
+            if isinstance(python_value, bool) or not ok:
+                kind = "a whole number" if whole else "a number"
+                shown = f'"{value}"' if isinstance(python_value, str) else str(value)
+                name = requirement_object_name(graph, subject) or subject
+                errors.append(f"{name}: {field} must be {kind} without quotes, got {shown}")
     return sorted(errors)

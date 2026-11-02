@@ -20,13 +20,16 @@ SPEC = """
 @prefix cp:   <http://taica.course/cp/ontology#> .
 @prefix spec: <http://taica.course/cp/spec/test#> .
 
-spec:cube a cp:TaskObject ; cp:objectName "cube" .
-spec:cube_coverage a cp:CoverageRequirement ;
-    cp:targetsAxis cp:ObjectPositionAxis ;
-    cp:forObject spec:cube ;
-    cp:xMin 0.0 ; cp:xMax 0.2 ; cp:yMin 0.0 ; cp:yMax 0.2 ;
-    cp:gridX 2 ; cp:gridY 2 ;
-    cp:minEpisodesPerCell 1 .
+spec:axis a cp:ObjectPositionAxis ; cp:hasRequirement spec:cube_requirement .
+spec:cube a cp:TaskObject ; cp:hasName [ a cp:Name ; cp:nameValue "cube" ] .
+spec:cube_requirement a cp:ObjectPositionAxisRequirement ;
+    cp:hasTaskObject spec:cube ;
+    cp:minEpisodesPerCell 1 ;
+    cp:hasAreaConfiguration spec:cube_area .
+spec:cube_area a cp:AreaConfiguration ;
+    cp:areaXMin 0.0 ; cp:areaXMax 0.2 ; cp:areaYMin 0.0 ; cp:areaYMax 0.2 ;
+    cp:hasCoverageGrid spec:cube_grid .
+spec:cube_grid a cp:CoverageGrid ; cp:numCellW 2 ; cp:numCellH 2 .
 """
 
 # One point per cell of the 2x2 grid over [0, 0.2]^2.
@@ -81,7 +84,8 @@ def test_empty_cell_is_a_violation(tmp_path: Path, spec: Path) -> None:
     report = verify_object_position_coverage(dataset, spec)
     assert not report.passed
     [finding] = report.violations
-    assert "cell (i=1, j=1)" in finding.message and "has 0 episode(s)" in finding.message
+    assert finding.message == "'cube' cell (i=1, j=1) x=[0.1, 0.2] y=[0.1, 0.2] has 0 episode(s); needs at least 1"
+    assert finding.focus_nodes == ["http://taica.course/cp/spec/test#cube_grid/cell/3"]
     assert report.coverage[0].cells_covered == 3
 
 
@@ -110,13 +114,13 @@ def test_upper_edge_belongs_to_last_cell(tmp_path: Path, spec: Path) -> None:
     assert not report.warnings
 
 
-def test_outside_region_is_warning_and_not_counted(tmp_path: Path, spec: Path) -> None:
+def test_outside_area_is_warning_and_not_counted(tmp_path: Path, spec: Path) -> None:
     episodes = {i: {"cube": [xy]} for i, xy in enumerate(CELL_CENTERS)}
     episodes[4] = {"cube": [(0.5, 0.05)]}
     report = verify_object_position_coverage(write_dataset(tmp_path / "ds", episodes), spec)
     assert report.passed
     [warning] = report.warnings
-    assert "outside the required region" in warning.message
+    assert "outside the required area" in warning.message
     assert sum(map(sum, report.coverage[0].counts)) == 4
 
 
@@ -152,8 +156,8 @@ def _fill(spec_text: str, values: dict[str, str]) -> str:
 
 
 FILLED = {
-    "cp:xMin": "0.0", "cp:xMax": "0.2", "cp:yMin": "0.0", "cp:yMax": "0.2",
-    "cp:gridX": "2", "cp:gridY": "2", "cp:minEpisodesPerCell": "1",
+    "cp:areaXMin": "0.0", "cp:areaXMax": "0.2", "cp:areaYMin": "0.0", "cp:areaYMax": "0.2",
+    "cp:numCellW": "2", "cp:numCellH": "2", "cp:minEpisodesPerCell": "1",
 }
 
 
@@ -163,7 +167,7 @@ def test_raw_template_parses_and_asks_for_todos(tmp_path: Path) -> None:
     dataset = write_dataset(tmp_path / "ds", {0: {"cube": [(0.05, 0.05)]}})
     report = verify_object_position_coverage(dataset, spec)
     assert not report.passed
-    assert report.errors[0].startswith("Spec still has TODO values: OBJECT_NAME: gridX")
+    assert report.errors[0].startswith("Spec still has TODO values: OBJECT_NAME: areaXMax")
     assert not report.violations  # SHACL skipped until the spec is filled in
 
 
@@ -194,12 +198,12 @@ def test_init_refuses_to_overwrite(tmp_path: Path) -> None:
 
 def test_quoted_numbers_are_rejected(tmp_path: Path) -> None:
     spec = tmp_path / "spec.ttl"
-    spec.write_text(_fill(render_spec(["cube"]), {**FILLED, "cp:xMin": '"0.0"', "cp:gridX": "2.5"}))
+    spec.write_text(_fill(render_spec(["cube"]), {**FILLED, "cp:areaXMin": '"0.0"', "cp:numCellW": "2.5"}))
     dataset = write_dataset(tmp_path / "ds", {0: {"cube": [(0.05, 0.05)]}})
     report = verify_object_position_coverage(dataset, spec)
     assert report.errors == [
-        "cube: gridX must be a whole number without quotes, got 2.5",
-        'cube: xMin must be a number without quotes, got "0.0"',
+        'cube: areaXMin must be a number without quotes, got "0.0"',
+        "cube: numCellW must be a whole number without quotes, got 2.5",
     ]
 
 
@@ -211,12 +215,14 @@ def test_invalid_turtle_is_reported(tmp_path: Path) -> None:
     assert report.errors[0].startswith("Spec is not valid Turtle")
 
 
-def test_empty_region_is_reported(tmp_path: Path) -> None:
+def test_empty_area_is_reported(tmp_path: Path) -> None:
     spec = tmp_path / "spec.ttl"
-    spec.write_text(_fill(render_spec(["cube"]), {**FILLED, "cp:xMin": "0.3"}))
+    spec.write_text(_fill(render_spec(["cube"]), {**FILLED, "cp:areaXMin": "0.3"}))
     dataset = write_dataset(tmp_path / "ds", {0: {"cube": [(0.05, 0.05)]}})
     report = verify_object_position_coverage(dataset, spec)
-    assert any("Coverage region is empty" in v.message for v in report.violations)
+    assert [v.message for v in report.violations] == [
+        "Coverage area is empty: areaXMin must be < areaXMax and areaYMin < areaYMax"
+    ]
 
 
 def _module_constants(path: Path) -> dict[str, object]:
@@ -239,17 +245,17 @@ def _doc_extra_shape_example() -> str:
 
 
 def test_extra_shapes_example_from_docs(tmp_path: Path, spec: Path) -> None:
-    dataset = write_dataset(tmp_path / "ds", {i: {"cube": [xy]} for i, xy in enumerate(CELL_CENTERS)})  # z = 0.9
+    dataset = write_dataset(tmp_path / "ds", {i: {"cube": [xy]} for i, xy in enumerate(CELL_CENTERS)})
     rules = tmp_path / "rules.ttl"
     rules.write_text(_doc_extra_shape_example())
     assert verify_object_position_coverage(dataset, spec, extra_shapes=[rules]).passed
 
-    rules.write_text(_doc_extra_shape_example().replace('"0.5"', '"1.0"'))
+    rules.write_text(_doc_extra_shape_example().replace('"0.0"', '"0.1"'))
     report = verify_object_position_coverage(dataset, spec, extra_shapes=[rules])
-    assert [(v.message, v.count) for v in report.violations] == [("cp:z: Object starts below the table", 4)]
+    assert [(v.message, v.count) for v in report.violations] == [("cp:positionY: Object starts behind the robot", 2)]
 
 
-def test_graph_out_writes_placements_and_cells(tmp_path: Path, spec: Path) -> None:
+def test_graph_out_writes_positions_and_cells(tmp_path: Path, spec: Path) -> None:
     from rdflib import RDF, Graph
 
     from data_verification.graph import CP
@@ -260,5 +266,47 @@ def test_graph_out_writes_placements_and_cells(tmp_path: Path, spec: Path) -> No
     assert report.passed, format_report(report)
     graph = Graph().parse(out, format="turtle")
     assert len(list(graph.subjects(RDF.type, CP.Episode))) == 4
-    assert len(list(graph.subjects(RDF.type, CP.ObjectPlacement))) == 4
-    assert len(list(graph.subjects(RDF.type, CP.CoverageCell))) == 4
+    assert len(list(graph.subjects(RDF.type, CP.Position))) == 4
+    assert sorted(int(v) for v in graph.objects(None, CP.indexValue)) == [0, 0, 1, 1, 2, 2, 3, 3]  # 4 episodes, 4 cells
+    assert len(list(graph.objects(None, CP.hasCell))) == 4
+    assert (None, CP.hasDataset, None) in graph
+
+
+def test_cells_are_indexed_row_major(tmp_path: Path) -> None:
+    # 3 x 2 grid: cell k = j * 3 + i. Leave only cell (i=2, j=0), k=2, empty.
+    spec = tmp_path / "spec.ttl"
+    spec.write_text(SPEC.replace("cp:numCellW 2", "cp:numCellW 3").replace("cp:areaXMax 0.2", "cp:areaXMax 0.3"))
+    points = [(0.05, 0.05), (0.15, 0.05), (0.05, 0.15), (0.15, 0.15), (0.25, 0.15)]
+    report = verify_object_position_coverage(write_dataset(tmp_path / "ds", {i: {"cube": [xy]} for i, xy in enumerate(points)}), spec)
+    assert report.coverage[0].counts == [[1, 1, 0], [1, 1, 1]]
+    [finding] = report.violations
+    assert finding.message.startswith("'cube' cell (i=2, j=0) x=[0.2, 0.3] y=[0, 0.1]")
+    assert finding.focus_nodes == ["http://taica.course/cp/spec/test#cube_grid/cell/2"]
+
+
+def test_area_bound_written_as_double_keeps_upper_edge(tmp_path: Path) -> None:
+    spec = tmp_path / "spec.ttl"
+    spec.write_text(SPEC.replace("cp:areaXMax 0.2", "cp:areaXMax 2.0e-1"))
+    episodes = {i: {"cube": [xy]} for i, xy in enumerate(CELL_CENTERS[:3])}
+    episodes[3] = {"cube": [(0.2, 0.15)]}
+    report = verify_object_position_coverage(write_dataset(tmp_path / "ds", episodes), spec)
+    assert report.passed, format_report(report)
+    assert not report.warnings
+
+
+def test_requirement_must_hang_off_an_axis(tmp_path: Path) -> None:
+    spec = tmp_path / "spec.ttl"
+    spec.write_text(SPEC.replace("cp:hasRequirement spec:cube_requirement", "cp:hasRequirement spec:other"))
+    dataset = write_dataset(tmp_path / "ds", {i: {"cube": [xy]} for i, xy in enumerate(CELL_CENTERS)})
+    report = verify_object_position_coverage(dataset, spec)
+    assert not report.passed
+    assert "Requirement is not linked from an ObjectPositionAxis (cp:hasRequirement)" in [v.message for v in report.violations]
+
+
+def test_grid_cell_count_must_match_width_times_height(tmp_path: Path) -> None:
+    # A hand-written extra cell makes 5 cells on a 2 x 2 grid.
+    spec = tmp_path / "spec.ttl"
+    spec.write_text(SPEC + "spec:cube_grid cp:hasCell spec:extra_cell .\nspec:extra_cell a cp:Cell .\n")
+    dataset = write_dataset(tmp_path / "ds", {i: {"cube": [xy]} for i, xy in enumerate(CELL_CENTERS)})
+    report = verify_object_position_coverage(dataset, spec)
+    assert "Coverage grid has 5 cell(s); numCellW * numCellH = 4" in [v.message for v in report.violations]

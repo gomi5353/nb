@@ -63,7 +63,7 @@ record ──▶ init spec ──▶ fill in the values ──▶ check ──�
 The check reads only `meta/info.json` and `data/**/*.parquet`. It never starts
 the simulator and never decodes video, so it runs in seconds.
 
-The values of the requirement (region, grid, minimum) are the group's decision.
+The values of the requirement (area, grid, minimum) are the group's decision.
 Running the check is required for every dataset; the report is evidence for the
 group's own analysis, not a grade.
 
@@ -151,32 +151,44 @@ it can also be copied by hand, replacing `OBJECT_NAME`.
 
 ### 3.2 One object block
 
+The specification declares one object-position axis at the top
+(`spec:object_position_axis a cp:ObjectPositionAxis .`). Each object block adds
+one requirement to it and describes the object, the area, and the grid:
+
 ```turtle
 # Already in my_dataset: 40 episode(s), initial x 8.930..9.050, y 6.400..6.560. For reference only.
-spec:blue_cup a cp:TaskObject ;
-    cp:objectName "blue_cup" .
+spec:object_position_axis cp:hasRequirement spec:blue_cup_requirement .
 
-spec:blue_cup_coverage a cp:CoverageRequirement ;
-    cp:targetsAxis cp:ObjectPositionAxis ;
-    cp:forObject spec:blue_cup ;
-    cp:xMin "TODO" ; cp:xMax "TODO" ;
-    cp:yMin "TODO" ; cp:yMax "TODO" ;
-    cp:gridX "TODO" ; cp:gridY "TODO" ;
+spec:blue_cup_requirement a cp:ObjectPositionAxisRequirement ;
+    cp:hasTaskObject spec:blue_cup ;
+    cp:hasAreaConfiguration spec:blue_cup_area ;
     cp:minEpisodesPerCell "TODO" .
+
+spec:blue_cup a cp:TaskObject ;
+    cp:hasName [ a cp:Name ; cp:nameValue "blue_cup" ] .
+
+spec:blue_cup_area a cp:AreaConfiguration ;
+    cp:hasCoverageGrid spec:blue_cup_grid ;
+    cp:areaXMin "TODO" ; cp:areaXMax "TODO" ;
+    cp:areaYMin "TODO" ; cp:areaYMax "TODO" .
+
+spec:blue_cup_grid a cp:CoverageGrid ;
+    cp:numCellW "TODO" ; cp:numCellH "TODO" .
 ```
 
 | Field | Meaning | Type |
 |---|---|---|
-| `cp:objectName` | Object to check; matches `object_position.<name>` in the dataset | Text in quotes (already filled) |
-| `cp:xMin`, `cp:xMax`, `cp:yMin`, `cp:yMax` | Rectangle, in metres and in the environment frame, where initial positions should be covered | Number, **no quotes** (`8.80`) |
-| `cp:gridX`, `cp:gridY` | Number of cells along x and along y | Whole number, no quotes (`3`) |
+| `cp:nameValue` | Object to check; matches `object_position.<name>` in the dataset | Text in quotes (already filled) |
+| `cp:areaXMin`, `cp:areaXMax`, `cp:areaYMin`, `cp:areaYMax` | Area (a rectangle), in metres and in the environment frame, where initial positions should be covered | Number, **no quotes** (`8.80`) |
+| `cp:numCellW`, `cp:numCellH` | Number of cells along x (width) and along y (height) | Whole number, no quotes (`3`) |
 | `cp:minEpisodesPerCell` | Episodes needed in each cell | Whole number, no quotes (`2`) |
 
 - Deleting a block stops checking that object; copying a block checks another
   one.
-- `cp:targetsAxis cp:ObjectPositionAxis` and `cp:forObject` stay as generated.
+- The links (`cp:hasRequirement`, `cp:hasTaskObject`, `cp:hasAreaConfiguration`,
+  `cp:hasCoverageGrid`) stay as generated.
 - The `# Already in ...` comment shows the range that the dataset has now. It
-  is information only: the rectangle describes where coverage is *wanted*, so
+  is information only: the area describes where coverage is *wanted*, so
   copying the current range would hide exactly the gaps the check is meant to
   find.
 
@@ -184,24 +196,25 @@ spec:blue_cup_coverage a cp:CoverageRequirement ;
 
 These values are the group's decision. The following questions help.
 
-**Rectangle (`xMin` .. `yMax`)**
+**Area (`areaXMin` .. `areaYMax`)**
 
 - Where could the object plausibly start at test time? The public eval file
   shows each object's nominal position (`init_state.pos`) and its randomization
   range (`pose_range`); the private test uses different poses. The table, the
-  robot's reach, and the camera views also limit the region.
-- Can the robot reach and grasp the object everywhere in the rectangle?
+  robot's reach, and the camera views also limit the area.
+- Can the robot reach and grasp the object everywhere in the area?
   Covering unreachable corners wastes collection time.
-- The rectangle is set per object; objects of the same task can have different
-  rectangles.
+- The area is set per object; objects of the same task can have different
+  areas.
 
-**Grid (`gridX`, `gridY`)**
+**Grid (`numCellW`, `numCellH`)**
 
-- Cell size = `(xMax - xMin) / gridX`. A useful scale is how far the object can
+- Cell width = `(areaXMax - areaXMin) / numCellW`, cell height =
+  `(areaYMax - areaYMin) / numCellH`. A useful scale is how far the object can
   move before the grasp has to change: a few centimetres for small objects,
   more for large or forgiving ones.
 - More cells show gaps in more detail but need more episodes: the minimum
-  dataset size is `gridX × gridY × minEpisodesPerCell` per object.
+  dataset size is `numCellW × numCellH × minEpisodesPerCell` per object.
 
 **Minimum per cell (`minEpisodesPerCell`)**
 
@@ -213,10 +226,10 @@ These values are the group's decision. The following questions help.
 **Example** (illustrative values, not a recommendation):
 
 ```turtle
-    cp:xMin 0.40 ; cp:xMax 0.70 ;
-    cp:yMin -0.15 ; cp:yMax 0.15 ;
-    cp:gridX 3 ; cp:gridY 3 ;
-    cp:minEpisodesPerCell 2 .
+    cp:minEpisodesPerCell 2 .                    # in the requirement
+    cp:areaXMin 0.40 ; cp:areaXMax 0.70 ;        # in the area
+    cp:areaYMin -0.15 ; cp:areaYMax 0.15 .
+    cp:numCellW 3 ; cp:numCellH 3 .              # in the grid
 ```
 
 This is a 30 cm × 30 cm square split into nine 10 cm cells, each needing 2
@@ -243,8 +256,8 @@ Episodes: 31
   y0    5   5   7
         x0  x1  x2
 
-VIOLATION 'blue_cup' cell (i=0, j=2) x=[8.8, 8.9] y=[6.49, 6.59] has 0 episode(s); needs at least 2  [blue_cup_coverage/cell/0_2]
-WARNING   Initial position of 'blue_cup' at (9.5, 6.4) is outside the required region; it does not count toward coverage  [episode/30/placement/blue_cup]
+VIOLATION 'blue_cup' cell (i=0, j=2) x=[8.8, 8.9] y=[6.49, 6.59] has 0 episode(s); needs at least 2  [blue_cup_grid/cell/6]
+WARNING   Initial position of 'blue_cup' at (9.5, 6.4) is outside the required area; it does not count toward coverage  [episode/30/object/blue_cup]
 
 RESULT: coverage spec NOT met
 ```
@@ -252,12 +265,14 @@ RESULT: coverage spec NOT met
 How to read it:
 
 - **Grid**: each number is the count of episodes whose object started in that
-  cell; `!` marks a count below the minimum. Columns are x (`x0` is the `xMin`
-  side), rows are y, with **+y at the top**.
+  cell; `!` marks a count below the minimum. Columns are x (`x0` is the
+  `areaXMin` side), rows are y, with **+y at the top**.
 - **VIOLATION**: a requirement is not met. Each thin or empty cell is one line
-  with its exact bounds; these are the places to collect next.
+  with its exact bounds; these are the places to collect next. The node name
+  at the end (`blue_cup_grid/cell/6`) is the cell's row-major index
+  `k = j × numCellW + i`.
 - **WARNING**: allowed but worth knowing. An initial position outside the
-  rectangle does not count toward any cell; `[episode/30/...]` names the
+  area does not count toward any cell; `[episode/30/...]` names the
   episode.
 - **ERROR**: the check could not run (missing column, `TODO` left in the
   specification, ...). See [section 5](#5-troubleshooting).
@@ -265,7 +280,7 @@ How to read it:
 | Option | Effect |
 |---|---|
 | `--json report.json` | Writes the full report (counts per cell, all findings) as JSON, for plots or scripts |
-| `--no-graph-out` | Skips writing the RDF graph that SHACL validates. By default `check` writes it (specification, generated cells, every episode and initial placement) to `outputs/object_position_coverage/<dataset>.ttl`, for inspection or SPARQL queries |
+| `--no-graph-out` | Skips writing the RDF graph that SHACL validates. By default `check` writes it (specification, generated cells, every episode with its task objects and their initial positions) to `outputs/object_position_coverage/<dataset>.ttl`, for inspection or SPARQL queries |
 | `--strict` | Treats warnings as failures |
 | `--extra-shapes my_rules.ttl` | Also runs the group's own SHACL rules ([section 7](#7-how-it-works-rdf-owl-shacl)); repeatable |
 
@@ -280,12 +295,13 @@ once coverage is reached.
 | Message | Cause | Fix |
 |---|---|---|
 | `meta/info.json declares no 'object_position.<name>' features` | Dataset recorded with leisaac's recorder instead of the repository's | Record again with the repository recorder ([How to Record Episodes §5.2](how_to_record.md#52-the-repositorys-recorder-and-object-positions)) |
-| `Dataset has no 'object_position.<name>' column, which the spec requires` | Block for an object that was not recorded, or a typo in `cp:objectName` | Fix the name or delete the block |
+| `Dataset has no 'object_position.<name>' column, which the spec requires` | Block for an object that was not recorded, or a typo in `cp:nameValue` | Fix the name or delete the block |
 | `Spec still has TODO values: ...` | Unfilled fields | Fill them in ([section 3.2](#32-one-object-block)) |
 | `... must be a number without quotes, got "8.8"` | Quoted number | Write `8.8`, not `"8.8"` |
-| `... must be a whole number without quotes, got 2.5` | Fraction in `gridX`, `gridY`, or `minEpisodesPerCell` | Use a whole number |
+| `... must be a whole number without quotes, got 2.5` | Fraction in `numCellW`, `numCellH`, or `minEpisodesPerCell` | Use a whole number |
 | `Spec is not valid Turtle: ...` | Syntax error, usually a missing `;` or `.` | Compare with the template: `;` between the fields of one block, `.` at the end of a block |
-| `Coverage region is empty` | `xMin >= xMax` or `yMin >= yMax` | Swap the values |
+| `Coverage area is empty` | `areaXMin >= areaXMax` or `areaYMin >= areaYMax` | Swap the values |
+| `Requirement is not linked from an ObjectPositionAxis` | The `spec:object_position_axis cp:hasRequirement ...` line of a block was deleted or names another requirement | Restore the line from the template |
 | `episode(s) do not start at frame_index 0` | Dataset edited or written by another tool | Record with the repository recorder |
 | `non-finite initial position` | NaN or infinity written as a position (an object fell out of the scene) | Inspect that episode; drop it or fix the reset |
 | Every episode lands in one cell | Objects never moved between episodes | Check that the task's reset randomization is active |
@@ -294,8 +310,8 @@ once coverage is reached.
 
 **Background**
 
-- **Only x and y position.** Orientation and height are recorded but not
-  checked.
+- **Only x and y position.** Orientation is not recorded; height (z) is
+  recorded but not checked.
 - **Each object separately.** Combinations ("blue cup left *while* pink cup
   right") and distances between objects are not checked.
 - **Only the first frame.** Trajectory quality, grasp success, and timing are
@@ -315,21 +331,50 @@ This section is not needed to use the tool.
 
 | Piece | In one sentence | File (under `packages/data_verification/src/data_verification/`) |
 |---|---|---|
-| **RDF** | Data stored as `subject → predicate → object` facts, e.g. `episode/3/placement/blue_cup → cp:x → 8.91` | Built from the dataset by `graph.py` |
-| **OWL** | The vocabulary: kinds of things (`Episode`, `ObjectPlacement`, `CoverageRequirement`, `CoverageCell`) and the properties linking them | `ontology/object_position.ttl` |
+| **RDF** | Data stored as `subject → predicate → object` facts, e.g. `episode/3/object/blue_cup/position → cp:positionX → 8.91` | Built from the dataset by `graph.py` |
+| **OWL** | The vocabulary: kinds of things and the properties linking them (below) | `ontology/object_position.ttl` |
 | **Specification** | The group's requirement, written as RDF in that vocabulary | The group's `.ttl` file |
-| **SHACL** | Rules: each rule selects nodes (every episode, every cell, ...) and states what must hold. The coverage rule is a SPARQL query that counts the initial placements inside each cell | `shapes/object_position_coverage.ttl` |
+| **SHACL** | Rules: each rule selects nodes (every episode, every cell, ...) and states what must hold. The coverage rule is a SPARQL query that counts the initial positions inside each cell | `shapes/object_position_coverage.ttl` |
+
+The vocabulary, as a tree (dotted links ┄ are added by the verifier; the rest
+is written in the specification):
+
+```text
+ObjectPositionAxis                      (a GeneralizationAxis)
+├─ hasRequirement ─▶ ObjectPositionAxisRequirement     (an AxisRequirement; minEpisodesPerCell)
+│                    ├─ hasTaskObject ─▶ TaskObject ─ hasName ─▶ Name (nameValue)
+│                    └─ hasAreaConfiguration ─▶ AreaConfiguration (areaXMin .. areaYMax)
+│                                               └─ hasCoverageGrid ─▶ CoverageGrid (numCellW, numCellH)
+│                                                                     └┄ hasCell ┄▶ Cell ─ hasIndex ─▶ Index (k)
+└┄ hasDataset ┄▶ Dataset
+                 └┄ hasEpisode ┄▶ Episode
+                                  ├┄ hasIndex ┄▶ Index (episode_index)
+                                  └┄ hasTaskObject ┄▶ TaskObject
+                                                      ├┄ hasName ┄▶ Name (nameValue)
+                                                      └┄ hasPosition ┄▶ Position (positionX, positionY)
+```
+
+- A requirement's object and the episodes' objects are all `TaskObject`s; the
+  check matches them by `nameValue`. Only the episodes' objects have a
+  `Position`.
+- A cell stores only its index `k`, row-major: column `i = k mod numCellW`,
+  row `j = ⌊k / numCellW⌋`. The rule computes the cell's bounds from the area
+  and the grid. A position on an inner cell edge belongs to the upper cell;
+  the area's upper edges belong to the last column and row.
+- Positions are stored as decimals rounded to 6 places (micrometres).
 
 What `check` does:
 
-1. Loads the specification and splits each rectangle into `CoverageCell`s.
-2. Converts each episode's first-frame positions into `ObjectPlacement` facts.
+1. Loads the specification and adds `numCellW × numCellH` indexed `Cell`s to
+   each grid.
+2. Converts each episode's first-frame positions into `TaskObject` and
+   `Position` facts, and links the dataset from the axis.
 3. Runs the SHACL rules over everything with
    [`pyshacl`](https://github.com/RDFLib/pySHACL).
 4. Prints each failed rule as one VIOLATION or WARNING line, plus the count
    grid.
 
-Additional rules (for example "the initial z must be above the table") are
+Additional rules (for example "the object must start in front of the robot") are
 written as SHACL shapes in a separate `.ttl` file and passed with
 `--extra-shapes`. The packaged shapes in `shapes/object_position_coverage.ttl` are
 commented and are a good starting point. A minimal example:
@@ -339,8 +384,8 @@ commented and are a good starting point. A minimal example:
 @prefix sh:  <http://www.w3.org/ns/shacl#> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 
-cp:AboveTableShape a sh:NodeShape ;
-    sh:targetClass cp:ObjectPlacement ;
-    sh:property [ sh:path cp:z ; sh:minInclusive "0.5"^^xsd:double ;
-                  sh:message "Object starts below the table" ] .
+cp:InFrontOfRobotShape a sh:NodeShape ;
+    sh:targetClass cp:Position ;
+    sh:property [ sh:path cp:positionY ; sh:minInclusive "0.0"^^xsd:decimal ;
+                  sh:message "Object starts behind the robot" ] .
 ```

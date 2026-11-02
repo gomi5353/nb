@@ -18,25 +18,34 @@
 @prefix cp:   <http://taica.course/cp/ontology#> .
 @prefix spec: <http://taica.course/cp/spec/mine#> .
 
+# The object position axis. Each block below adds one requirement to it.
+spec:object_position_axis a cp:ObjectPositionAxis .
+
 # --- BEGIN OBJECT ---
+spec:object_position_axis cp:hasRequirement spec:OBJECT_NAME_requirement .
+
+spec:OBJECT_NAME_requirement a cp:ObjectPositionAxisRequirement ;
+    cp:hasTaskObject spec:OBJECT_NAME ;
+    cp:hasAreaConfiguration spec:OBJECT_NAME_area ;
+
+    # Minimum number of episodes whose initial position of this object falls
+    # inside each cell. Whole number, e.g. 2.
+    cp:minEpisodesPerCell "TODO" .
+
 spec:OBJECT_NAME a cp:TaskObject ;
     # Must match the dataset column name object_position.OBJECT_NAME.
-    cp:objectName "OBJECT_NAME" .
+    cp:hasName [ a cp:Name ; cp:nameValue "OBJECT_NAME" ] .
 
-spec:OBJECT_NAME_coverage a cp:CoverageRequirement ;
-    cp:targetsAxis cp:ObjectPositionAxis ;
-    cp:forObject spec:OBJECT_NAME ;
+spec:OBJECT_NAME_area a cp:AreaConfiguration ;
+    cp:hasCoverageGrid spec:OBJECT_NAME_grid ;
 
-    # Workspace rectangle your data should cover: where this object may start.
+    # Rectangle your data should cover: where this object may start.
     # Numbers, e.g. 8.80 (not quoted).
-    cp:xMin "TODO" ; cp:xMax "TODO" ;
-    cp:yMin "TODO" ; cp:yMax "TODO" ;
+    cp:areaXMin "TODO" ; cp:areaXMax "TODO" ;
+    cp:areaYMin "TODO" ; cp:areaYMax "TODO" .
 
-    # Grid over the rectangle: number of cells along x and along y.
-    # Cell size = (xMax - xMin) / gridX. Whole numbers, e.g. 3.
-    cp:gridX "TODO" ; cp:gridY "TODO" ;
-
-    # Minimum number of episodes whose initial placement falls inside each
-    # cell. Whole number, e.g. 2.
-    cp:minEpisodesPerCell "TODO" .
+spec:OBJECT_NAME_grid a cp:CoverageGrid ;
+    # Number of cells along x (width) and along y (height).
+    # Cell width = (areaXMax - areaXMin) / numCellW. Whole numbers, e.g. 3.
+    cp:numCellW "TODO" ; cp:numCellH "TODO" .
 # --- END OBJECT ---
