@@ -302,7 +302,8 @@ once coverage is reached.
 | `... must be a number without quotes, got "8.8"` | Quoted number | Write `8.8`, not `"8.8"` |
 | `... must be a whole number without quotes, got 2.5` | Fraction in `numCellW`, `numCellH`, or `minEpisodesPerCell` | Use a whole number |
 | `Spec is not valid Turtle: ...` | Syntax error, usually a missing `;` or `.` | Compare with the template: `;` between the fields of one block, `.` at the end of a block |
-| `Coverage area is empty` | `areaXMin >= areaXMax` or `areaYMin >= areaYMax` | Swap the values |
+| `coverage area is empty` | `areaXMin >= areaXMax` or `areaYMin >= areaYMax` | Swap the values |
+| `numCellW must be at least 1` (or `numCellH`, `minEpisodesPerCell` at least 0) | Zero or negative grid size or minimum | Use a positive whole number |
 | `Requirement is not linked from an ObjectPositionAxis` | The `spec:object_position_axis cp:hasRequirement ...` line of a block was deleted or names another requirement | Restore the line from the template |
 | `episode(s) do not start at frame_index 0` | Dataset edited or written by another tool | Record with the repository recorder |
 | `non-finite initial position` | NaN or infinity written as a position (an object fell out of the scene) | Inspect that episode; drop it or fix the reset |

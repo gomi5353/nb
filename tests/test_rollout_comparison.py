@@ -321,3 +321,11 @@ def test_rollout_writes_log_after_each_reset() -> None:
     capture = source.index("start_positions = object_positions(env.scene")
     step = source.index("env.step(actions)")
     assert reset < capture < step, "initial positions must be read after the round's reset and before stepping"
+
+
+def test_inverted_spec_area_is_reported(tmp_path: Path) -> None:
+    spec = tmp_path / "spec.ttl"
+    spec.write_text(SPEC.replace("cp:areaXMin 0.0 ; cp:areaXMax 0.2", "cp:areaXMin 0.2 ; cp:areaXMax 0.0"))
+    result = run(tmp_path, spec, [(0.05, 0.05, "succeeded")])
+    assert not result.passed
+    assert any(e.startswith("cube: coverage area is empty") for e in result.errors), result.errors

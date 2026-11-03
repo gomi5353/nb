@@ -12,7 +12,7 @@ from rdflib import RDF, XSD, Graph, Namespace
 
 from .dataset import DatasetError, read_initial_placements
 from .graph import CP, add_dataset, expand_cells
-from .spec_template import todo_fields, value_type_errors
+from .spec_template import todo_fields, value_range_errors, value_type_errors
 
 SH = Namespace("http://www.w3.org/ns/shacl#")
 
@@ -142,9 +142,9 @@ def build_verification_graph(dataset_root: str | Path, spec: str | Path) -> tupl
     if todo:
         report.errors.append("Spec still has TODO values: " + ", ".join(todo))
         return graph, report
-    type_errors = value_type_errors(graph)
-    if type_errors:
-        report.errors.extend(type_errors)
+    value_errors = value_type_errors(graph) or value_range_errors(graph)
+    if value_errors:
+        report.errors.extend(value_errors)
         return graph, report
     if not any(graph.subjects(RDF.type, CP.ObjectPositionAxisRequirement)):
         report.errors.append("Spec declares no cp:ObjectPositionAxisRequirement; nothing to check")
@@ -192,7 +192,7 @@ def verify_object_position_coverage(
     if graph_out is not None:  # also when empty, so an old file never looks current
         Path(graph_out).parent.mkdir(parents=True, exist_ok=True)
         graph.serialize(destination=Path(graph_out), format="turtle")
-    if len(graph) == 0 or todo_fields(graph) or value_type_errors(graph):
+    if len(graph) == 0 or todo_fields(graph) or value_type_errors(graph) or value_range_errors(graph):
         return report  # spec missing or not filled in; SHACL would only add noise
 
     shapes = _packaged_graph("shapes", "object_position_coverage.ttl")

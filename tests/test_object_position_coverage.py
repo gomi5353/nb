@@ -220,9 +220,19 @@ def test_empty_area_is_reported(tmp_path: Path) -> None:
     spec.write_text(_fill(render_spec(["cube"]), {**FILLED, "cp:areaXMin": "0.3"}))
     dataset = write_dataset(tmp_path / "ds", {0: {"cube": [(0.05, 0.05)]}})
     report = verify_object_position_coverage(dataset, spec)
-    assert [v.message for v in report.violations] == [
-        "Coverage area is empty: areaXMin must be < areaXMax and areaYMin < areaYMax"
+    # A spec error, reported before any cell is counted (no grid, no per-cell violations).
+    assert report.errors == [
+        "cube: coverage area is empty: areaXMin must be < areaXMax and areaYMin < areaYMax, got x 0.3..0.2, y 0.0..0.2"
     ]
+    assert not report.violations and not report.coverage
+
+
+def test_zero_cells_is_reported(tmp_path: Path) -> None:
+    spec = tmp_path / "spec.ttl"
+    spec.write_text(_fill(render_spec(["cube"]), {**FILLED, "cp:numCellW": "0"}))
+    dataset = write_dataset(tmp_path / "ds", {0: {"cube": [(0.05, 0.05)]}})
+    report = verify_object_position_coverage(dataset, spec)
+    assert report.errors == ["cube: numCellW must be at least 1, got 0"]
 
 
 def _module_constants(path: Path) -> dict[str, object]:

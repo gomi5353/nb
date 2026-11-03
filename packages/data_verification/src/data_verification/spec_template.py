@@ -93,3 +93,25 @@ def value_type_errors(graph) -> list[str]:
                 name = requirement_object_name(graph, subject) or subject
                 errors.append(f"{name}: {field} must be {kind} without quotes, got {shown}")
     return sorted(errors)
+
+
+def value_range_errors(graph) -> list[str]:
+    """Areas, grids and minimums that are numbers but cannot describe a grid (e.g. swapped min/max)."""
+    errors = []
+    for area in set(graph.subjects(CP.areaXMin, None)) | set(graph.subjects(CP.areaXMax, None)):
+        x0, x1, y0, y1 = (graph.value(area, CP[f]) for f in _NUMBER_FIELDS)
+        if None in (x0, x1, y0, y1):
+            continue  # missing fields are reported by the SHACL shapes
+        x0, x1, y0, y1 = (v.toPython() for v in (x0, x1, y0, y1))
+        if not (x0 < x1 and y0 < y1):
+            name = requirement_object_name(graph, area) or area
+            errors.append(
+                f"{name}: coverage area is empty: areaXMin must be < areaXMax and areaYMin < areaYMax, "
+                f"got x {x0}..{x1}, y {y0}..{y1}"
+            )
+    for field, low in (("numCellW", 1), ("numCellH", 1), ("minEpisodesPerCell", 0)):
+        for subject, value in graph.subject_objects(CP[field]):
+            if value.toPython() < low:
+                name = requirement_object_name(graph, subject) or subject
+                errors.append(f"{name}: {field} must be at least {low}, got {value}")
+    return sorted(errors)
