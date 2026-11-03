@@ -92,13 +92,17 @@ the recorder. Each column has this format:
 - **Name**: the object's scene name (`blue_cup`, `fork`, ...).
 
 The recorded objects are those in `tracked_object_names` of the task
-configuration:
+configuration: the objects whose start position is randomized. Objects that
+start at the same place in every episode are listed in `fixed_object_names`
+instead. They get no column and are not verified, because their position never
+varies; rollout logs their pose once, in the log's header, for reference only
+([section 8](#8-compare-the-dataset-with-a-rollout)).
 
-| Task | `tracked_object_names` |
-|---|---|
-| Cup stacking | `blue_cup`, `pink_cup` |
-| Cutlery arrangement | `fork`, `knife`, `plate` |
-| Toy blocks collection | `green_block`, `blue_block`, `red_block`, `storage_box` |
+| Task | `tracked_object_names` (recorded, verified) | `fixed_object_names` (not recorded) |
+|---|---|---|
+| Cup stacking | `blue_cup`, `pink_cup` | none |
+| Cutlery arrangement | `fork`, `knife` | `plate` |
+| Toy blocks collection | `green_block`, `blue_block`, `red_block` | `storage_box` |
 
 Details of how the recorder captures the positions:
 
@@ -429,8 +433,10 @@ the eval file has changed since it was generated, both `scripts/rollout.py`
 
 Every rollout ([Rollout §3](rollout.md#3-run-rollout)) writes
 `outputs/rollout/<timestamp>.jsonl`, with no flag needed: one line per episode with each
-object's position right after the reset (env-local frame, the same frame as
-the dataset columns) and the outcome. Episodes stopped by a manual reset are
+randomized object's position right after the reset (env-local frame, the same frame as
+the dataset columns) and the outcome. The header line before them records the
+robot base and fixed object poses once (`robot_base`, `fixed_objects`); `compare`
+ignores them. Episodes stopped by a manual reset are
 marked `aborted` and are not counted.
 
 ### 8.3 Compare

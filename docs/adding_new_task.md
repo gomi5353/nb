@@ -187,7 +187,8 @@ class CupStackingEnvCfg(SingleArmFrankaTaskEnvCfg):
 | Setting | Purpose |
 |---|---|
 | `task_description` | Short sentence describing the goal. It is saved with every episode as the task text ([How to Record Episodes §5.4](how_to_record.md#54-what-each-frame-contains)) and is the instruction for language-conditioned policies. |
-| `tracked_object_names` | Objects whose positions the recorder writes as `object_position.<name>` for data verification. The recorder refuses to start when it is empty. |
+| `tracked_object_names` | Objects whose start position is randomized. The recorder writes their positions as `object_position.<name>` for data verification and refuses to start when the list is empty. |
+| `fixed_object_names` | Objects that start at the same place in every episode (optional). They get no dataset column and are not verified; rollout logs their pose once in its log header, for reference. |
 | `episode_length_s` | Time a policy gets per evaluation episode. |
 | `env_spacing` | Distance between parallel environments; larger than the scene. |
 | `scene.robot.init_state` | Robot base pose and home joint angles. |

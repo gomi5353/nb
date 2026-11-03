@@ -502,8 +502,9 @@ Only the position is recorded, not the orientation, because position is the prim
 
 - declares one `object_position.<name>` column, float32 `(3,)` =
   `[x, y, z]`, for every name in the task configuration's
-  `tracked_object_names` (all scene objects of the three tasks are already
-  listed there);
+  `tracked_object_names`, the objects whose start position is randomized
+  (already set for the three tasks; the fixed `plate` and `storage_box` are in
+  `fixed_object_names` and get no column);
 - fills these columns in every frame with the object position relative to the
   environment origin;
 - raises a `ValueError` when it is created for a task whose

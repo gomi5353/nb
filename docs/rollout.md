@@ -73,7 +73,11 @@ python scripts/rollout.py \
 
 Besides the success rate, every rollout writes a per-episode log to
 `outputs/rollout/<timestamp>.jsonl` (no flag needed): each episode's initial
-object positions and whether it succeeded. Comparing it with the dataset shows which
+positions of the randomized objects and whether it succeeded. The first line
+(header) also records, once, the poses of what never moves: `robot_base` and
+`fixed_objects` (`fixed_object_names`, such as the plate), each as `pos`
+(env-local, metres) and `rot` (quaternion w, x, y, z). They are for reference
+only; the comparison ignores them. Comparing it with the dataset shows which
 rollout positions the dataset does not cover and where to record next
 ([Object Position Coverage §8](object_position_coverage.md#8-compare-the-dataset-with-a-rollout)).
 At start, rollout also prints a note when the eval file's rollout range file is

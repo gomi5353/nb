@@ -323,6 +323,50 @@ def test_rollout_writes_log_after_each_reset() -> None:
     assert reset < capture < step, "initial positions must be read after the round's reset and before stepping"
 
 
+def _list_attr(path: Path, name: str) -> list[str]:
+    for node in ast.walk(ast.parse(path.read_text())):
+        if isinstance(node, ast.AnnAssign) and getattr(node.target, "id", None) == name:
+            return ast.literal_eval(node.value)
+    return []
+
+
+TASK_FILES = [
+    "eval/cup_stacking_eval.py",
+    "eval/cutlery_arrangement_eval.py",
+    "eval/toy_blocks_collection_eval.py",
+    "packages/simulator/src/simulator/tasks/cup_stacking/cup_stacking_env_cfg.py",
+    "packages/simulator/src/simulator/tasks/cutlery_arrangement/cutlery_arrangement_env_cfg.py",
+    "packages/simulator/src/simulator/tasks/toy_blocks_collection/toy_blocks_collection_env_cfg.py",
+]
+
+
+@pytest.mark.parametrize("task_file", TASK_FILES)
+def test_only_randomized_objects_are_tracked(task_file: str) -> None:
+    path = ROOT / task_file
+    tracked, fixed = _list_attr(path, "tracked_object_names"), _list_attr(path, "fixed_object_names")
+    assert set(tracked) == {r.name for r in read_task_ranges(path).ranges}, "tracked_object_names must list exactly the randomized objects"
+    assert not set(tracked) & set(fixed)
+
+
+def test_fixed_poses_in_header_are_ignored(tmp_path: Path, spec: Path) -> None:
+    eval_file, range_file = write_eval(tmp_path)
+    log = write_log(tmp_path / "run.jsonl", eval_file, [(0.05, 0.05, "succeeded")])
+    lines = [json.loads(line) for line in log.read_text().splitlines()]
+    pose = {"pos": [7.0, 2.9, 0.74], "rot": [1.0, 0.0, 0.0, 0.0]}
+    lines[0].update(robot_base=pose, fixed_objects={"plate": pose})
+    log.write_text("".join(json.dumps(r) + "\n" for r in lines))
+    result = compare_rollout(full_dataset(tmp_path), spec, log, range_file)
+    assert result.passed and [o.object_name for o in result.axes[0].objects] == ["cube"]
+
+
+def test_rollout_header_has_robot_base_and_fixed_objects() -> None:
+    source = (ROOT / "scripts" / "rollout.py").read_text()
+    assert '"robot_base": asset_pose(env.scene, "robot")' in source
+    assert "fixed_object_names" in source
+    reset = source.index("obs_dict, _ = env.reset()\n        rollout_log = open_rollout_log(")
+    assert reset < source.index("env.step(actions)"), "the header poses must be read after the first reset"
+
+
 def test_inverted_spec_area_is_reported(tmp_path: Path) -> None:
     spec = tmp_path / "spec.ttl"
     spec.write_text(SPEC.replace("cp:areaXMin 0.0 ; cp:areaXMax 0.2", "cp:areaXMin 0.2 ; cp:areaXMax 0.0"))

@@ -2,7 +2,8 @@
 
 ``scripts/rollout.py`` writes one JSON object per line:
 
-* the first line is the header: ``{"type": "header", "version": 1, "eval_file": ..., "eval_sha256": ..., ...}``;
+* the first line is the header: ``{"type": "header", "version": 1, "eval_file": ..., "eval_sha256": ..., ...,
+  "robot_base": {"pos": [x, y, z], "rot": [w, x, y, z]}, "fixed_objects": {"<name>": {"pos": ..., "rot": ...}, ...}}``;
 * then one line per episode: ``{"type": "episode", "episode": 0, "status": "succeeded" | "failed" | "aborted",
   "factors": {"object_position": {"<name>": [x, y, z], ...}}}``.
 
@@ -10,6 +11,12 @@ Positions are each object's root position right after the reset that starts the
 episode, relative to the env origin, metres: the same frame as the dataset's
 ``object_position.<name>`` columns. ``aborted`` episodes (manual reset, app
 closed) have no outcome and are skipped by the comparison.
+
+``robot_base`` and ``fixed_objects`` (the task's ``fixed_object_names``, such as
+the plate) are the poses of what does not move between episodes, read once
+after the first reset in env 0, same frame, rotation as a ``(w, x, y, z)``
+quaternion. They are for reference only: fixed objects have no dataset column
+and the comparison ignores both.
 
 ``factors`` is keyed by generalization axis. A group that adds a factor logs its
 value under its own key next to ``object_position`` (see
@@ -62,4 +69,13 @@ def object_positions(scene, env_ids, names: list[str] | None = None) -> dict[str
         name: (obj.data.root_pos_w[env_ids] - origins).tolist()
         for name, obj in scene.rigid_objects.items()
         if not names or name in names
+    }
+
+
+def asset_pose(scene, name: str, env_id: int = 0) -> dict[str, list[float]]:
+    """Root pose of the scene asset ``name`` in ``env_id``: position relative to the env origin and (w, x, y, z) quaternion."""
+    data = scene[name].data
+    return {
+        "pos": (data.root_pos_w[env_id] - scene.env_origins[env_id]).tolist(),
+        "rot": data.root_quat_w[env_id].tolist(),
     }

@@ -194,7 +194,7 @@ import leisaac  # noqa: F401
 import simulator.tasks  # noqa: F401
 from simulator.tasks.external import resolve_task
 from simulator import FRANKA_JOINT_NAMES
-from simulator.utils.rollout_log import OBJECT_POSITION_FACTOR, RolloutLogWriter, file_sha256, object_positions
+from simulator.utils.rollout_log import OBJECT_POSITION_FACTOR, RolloutLogWriter, asset_pose, file_sha256, object_positions
 
 
 def setup_dual_viewports():
@@ -528,9 +528,10 @@ def _repo_relative(path: str) -> str:
     return path if relative.startswith("..") else relative
 
 
-def open_rollout_log(env_cfg, task_id: str) -> RolloutLogWriter:
+def open_rollout_log(env_cfg, task_id: str, env) -> RolloutLogWriter:
     """Start the per-episode log outputs/rollout/<timestamp>.jsonl, read by `verify_object_position_coverage.py compare`.
 
+    Call after the first reset: the header records the robot base and fixed object poses, which never change.
     Warns when the eval file's rollout range file is missing or stale.
     """
     eval_file = _repo_relative(inspect.getsourcefile(type(env_cfg)))
@@ -544,6 +545,8 @@ def open_rollout_log(env_cfg, task_id: str) -> RolloutLogWriter:
         "checkpoint": args_cli.policy_checkpoint_path,
         "num_envs": args_cli.num_envs,
         "episode_length_s": env_cfg.episode_length_s,
+        "robot_base": asset_pose(env.scene, "robot"),
+        "fixed_objects": {name: asset_pose(env.scene, name) for name in getattr(env_cfg, "fixed_object_names", [])},
     }
     writer = RolloutLogWriter(path, header)
     print(f"[rollout] per-episode log: {writer.path}", flush=True)
@@ -583,7 +586,6 @@ def main():
     env_cfg.recorders = None
 
     env: ManagerBasedRLEnv = gym.make(task_id, cfg=env_cfg).unwrapped
-    rollout_log = open_rollout_log(env_cfg, task_id)
 
     # Warm up the renderer before the first reset. Headless Isaac Sim with
     # camera observations otherwise hangs the first env.reset() while the
@@ -604,6 +606,7 @@ def main():
     # raises "Inplace update to inference tensor outside InferenceMode".
     with torch.inference_mode():
         obs_dict, _ = env.reset()
+        rollout_log = open_rollout_log(env_cfg, task_id, env)
     print("[rollout] env.reset() returned", flush=True)
 
     language_instruction = args_cli.policy_language_instruction
