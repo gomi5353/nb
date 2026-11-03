@@ -1,0 +1,116 @@
+# SHACL rules for the rollout side of the rollout-vs-dataset comparison.
+#
+# Run by the compare subcommand next to the dataset's coverage counts; the
+# dataset itself is checked by the check subcommand. Severity:
+#   sh:Violation - the rollout or its ranges are malformed; the comparison stops
+#   sh:Warning   - reported, does not fail unless --strict
+#
+# Queries use plain triple patterns, not property paths (see
+# object_position_coverage.ttl).
+
+@prefix cp:   <http://taica.course/cp/ontology#> .
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+
+cp: a owl:Ontology ;
+    sh:declare [ sh:prefix "cp" ; sh:namespace "http://taica.course/cp/ontology#"^^xsd:anyURI ] .
+
+# ---- Rollout: ranges, finished episodes, one outcome and position each -------
+
+cp:RolloutShape a sh:NodeShape ;
+    sh:targetClass cp:Rollout ;
+    sh:property [
+        sh:path cp:hasRolloutRange ; sh:class cp:RolloutRange ; sh:minCount 1 ;
+        sh:message "Rollout has no rollout range (cp:hasRolloutRange)" ;
+    ] ;
+    sh:property [
+        sh:path cp:hasEpisode ; sh:class cp:Episode ; sh:minCount 1 ;
+        sh:message "Rollout has no finished episode" ;
+    ] ;
+    sh:sparql [
+        sh:message "Rollout episode {?episode} does not have exactly one boolean cp:succeeded" ;
+        sh:prefixes cp: ;
+        sh:select """
+            SELECT $this ?episode WHERE {
+                $this cp:hasEpisode ?episode .
+                OPTIONAL { ?episode cp:succeeded ?s . FILTER (DATATYPE(?s) = xsd:boolean) }
+            }
+            GROUP BY $this ?episode
+            HAVING (COUNT(?s) != 1)
+        """ ;
+    ] ;
+    sh:sparql [
+        sh:message "Rollout episode {?episode} has no initial position for randomized object '{?name}'" ;
+        sh:prefixes cp: ;
+        sh:select """
+            SELECT $this ?episode ?name WHERE {
+                $this cp:hasEpisode ?episode ; cp:hasRolloutRange ?range .
+                ?range a cp:ObjectPositionRolloutRange ; cp:hasTaskObject ?rangeObj .
+                ?rangeObj cp:hasName ?rangeName . ?rangeName cp:nameValue ?name .
+                FILTER NOT EXISTS {
+                    ?episode cp:hasTaskObject ?obj .
+                    ?obj cp:hasName ?objName ; cp:hasPosition ?p .
+                    ?objName cp:nameValue ?name .
+                }
+            }
+        """ ;
+    ] .
+
+# ---- Rollout range: one object, one area, its source ---------------------------
+
+cp:ObjectPositionRolloutRangeShape a sh:NodeShape ;
+    sh:targetClass cp:ObjectPositionRolloutRange ;
+    sh:property [ sh:path cp:hasTaskObject ; sh:class cp:TaskObject ; sh:minCount 1 ; sh:maxCount 1 ] ;
+    sh:property [ sh:path cp:hasAreaConfiguration ; sh:class cp:AreaConfiguration ; sh:minCount 1 ; sh:maxCount 1 ] ;
+    sh:property [ sh:path cp:sourceFile ; sh:datatype xsd:string ; sh:minCount 1 ; sh:maxCount 1 ] ;
+    sh:property [ sh:path cp:sourceSha256 ; sh:datatype xsd:string ; sh:minCount 1 ; sh:maxCount 1 ] ;
+    sh:sparql [
+        sh:message "Rollout range area is inverted: areaXMin must be <= areaXMax and areaYMin <= areaYMax" ;
+        sh:prefixes cp: ;
+        sh:select """
+            SELECT $this WHERE {
+                $this cp:hasAreaConfiguration ?area .
+                ?area cp:areaXMin ?x0 ; cp:areaXMax ?x1 ; cp:areaYMin ?y0 ; cp:areaYMax ?y1 .
+                FILTER (?x0 > ?x1 || ?y0 > ?y1)
+            }
+        """ ;
+    ] .
+
+# Initial positions outside the range should not happen (the reset samples
+# inside it); they belong to no rollout cell and count as not covered.
+cp:RolloutTaskObjectRangeShape a sh:NodeShape ;
+    sh:targetClass cp:Rollout ;
+    sh:severity sh:Warning ;
+    sh:sparql [
+        sh:message "Rollout episode {?episode}: '{?name}' starts at ({?x}, {?y}), outside its rollout range" ;
+        sh:prefixes cp: ;
+        sh:select """
+            SELECT $this ?episode ?name ?x ?y WHERE {
+                $this cp:hasEpisode ?episode ; cp:hasRolloutRange ?range .
+                ?range a cp:ObjectPositionRolloutRange ; cp:hasTaskObject ?rangeObj ; cp:hasAreaConfiguration ?area .
+                ?rangeObj cp:hasName ?rangeName . ?rangeName cp:nameValue ?name .
+                ?area cp:areaXMin ?x0 ; cp:areaXMax ?x1 ; cp:areaYMin ?y0 ; cp:areaYMax ?y1 .
+                ?episode cp:hasTaskObject ?obj .
+                ?obj cp:hasName ?objName ; cp:hasPosition ?p .
+                ?objName cp:nameValue ?name .
+                ?p cp:positionX ?x ; cp:positionY ?y .
+                FILTER (?x < ?x0 || ?x > ?x1 || ?y < ?y0 || ?y > ?y1)
+            }
+        """ ;
+    ] .
+
+# ---- Rollout grid: cell size and cell count ----------------------------------
+
+cp:RolloutGridShape a sh:NodeShape ;
+    sh:targetObjectsOf cp:hasCoverageGrid ;
+    sh:sparql [
+        sh:message "Rollout grid cell size must be > 0" ;
+        sh:prefixes cp: ;
+        sh:select """
+            SELECT $this WHERE {
+                $this cp:cellSizeX ?dx ; cp:cellSizeY ?dy .
+                FILTER (?dx <= 0 || ?dy <= 0)
+            }
+        """ ;
+    ] .

@@ -293,7 +293,57 @@ If two factors later share substantial behavior, common binning code is
 refactored after both are tested. Different factors often have different
 units, aggregations, and boundary semantics.
 
-## 11. Test the complete path
+## 11. Compare the factor with a rollout
+
+**Required**
+
+The `compare` subcommand of
+[`verify_object_position_coverage.py`](../scripts/verify_object_position_coverage.py)
+checks, after a rollout, whether the dataset covers the conditions the rollout
+actually ran ([Object Position Coverage §8](object_position_coverage.md#8-compare-the-dataset-with-a-rollout)).
+A run counts as *in distribution* only when it is covered on **every** axis, so
+a new factor joins the comparison by adding its own axis. Four additions, each
+next to the object-position one:
+
+1. **Range class.** In the factor's ontology, a subclass of `cp:RolloutRange`
+   that a `cp:Rollout` points to with `cp:hasRolloutRange`:
+
+   ```turtle
+   cp:LightingRolloutRange a owl:Class ;
+       rdfs:subClassOf cp:RolloutRange .
+   cp:minLux a owl:DatatypeProperty ; rdfs:domain cp:LightingRolloutRange ; rdfs:range xsd:decimal .
+   cp:maxLux a owl:DatatypeProperty ; rdfs:domain cp:LightingRolloutRange ; rdfs:range xsd:decimal .
+   ```
+
+   Like `cp:ObjectPositionRolloutRange`, it carries `cp:sourceFile` and
+   `cp:sourceSha256` of the eval file it was read from.
+2. **Range generator.** Extend
+   [`rollout_range.py`](../packages/data_verification/src/data_verification/rollout_range.py)
+   to read the factor's randomization from the eval file (for lighting, the
+   `intensity_range` of `randomize_light_conditions`) and write the range node.
+3. **Rollout log.** In `scripts/rollout.py`, log each episode's sampled value
+   under the factor's own key, next to `object_position`:
+
+   ```json
+   {"type": "episode", "episode": 3, "status": "failed",
+    "factors": {"object_position": {"blue_cup": [8.91, 6.47, 1.0]}, "lighting": {"intensity": 6120.0}}}
+   ```
+
+   The format is described in
+   [`rollout_log.py`](../packages/simulator/src/simulator/utils/rollout_log.py);
+   `add_rollout()` in `graph.py` adds the value to the rollout's episodes.
+4. **Axis comparer.** A function `(graph, result, requirements) ->
+   AxisComparison` appended to `ROLLOUT_AXES` in
+   [`rollout_comparison.py`](../packages/data_verification/src/data_verification/rollout_comparison.py).
+   It splits the rollout range into the student's bin size, counts the runs
+   per rollout bin, marks a bin covered when every student bin it overlaps
+   meets the minimum, and returns, for each run, whether its bin is covered.
+   `compare_object_position()` is the example.
+
+The rollout bins have no minimum: they only record where the rollout ran and
+whether it succeeded. The minimum belongs to the dataset's bins.
+
+## 12. Test the complete path
 
 **Required**
 
@@ -315,7 +365,7 @@ at least:
 One small simulator collection is also run. Synthetic data proves the checker,
 but not that the recorder reads the intended simulator quantity.
 
-## 12. Definition of done
+## 13. Definition of done
 
 **Required**
 
@@ -327,6 +377,7 @@ Another student can:
 - write a coverage requirement;
 - run one documented command;
 - see actionable coverage gaps;
+- compare the dataset with a rollout on the factor;
 - reproduce passing and failing tests;
 - train normally without the verification metadata becoming a policy input.
 

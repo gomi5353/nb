@@ -158,13 +158,16 @@ parser.add_argument(
     ),
 )
 
+
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 
 app_launcher = AppLauncher(vars(args_cli))
 simulation_app = app_launcher.app
 
+import inspect
 import os
+import re
 import time
 import traceback
 from typing import Any
@@ -191,6 +194,7 @@ import leisaac  # noqa: F401
 import simulator.tasks  # noqa: F401
 from simulator.tasks.external import resolve_task
 from simulator import FRANKA_JOINT_NAMES
+from simulator.utils.rollout_log import OBJECT_POSITION_FACTOR, RolloutLogWriter, file_sha256, object_positions
 
 
 def setup_dual_viewports():
@@ -519,6 +523,44 @@ def get_camera_infos(
     return camera_infos
 
 
+def _repo_relative(path: str) -> str:
+    relative = os.path.relpath(path)
+    return path if relative.startswith("..") else relative
+
+
+def open_rollout_log(env_cfg, task_id: str) -> RolloutLogWriter:
+    """Start the per-episode log outputs/rollout/<timestamp>.jsonl, read by `verify_object_position_coverage.py compare`.
+
+    Warns when the eval file's rollout range file is missing or stale.
+    """
+    eval_file = _repo_relative(inspect.getsourcefile(type(env_cfg)))
+    eval_sha = file_sha256(eval_file)
+    path = os.path.join("outputs", "rollout", f"{time.strftime('%Y%m%d-%H%M%S')}.jsonl")
+    header = {
+        "eval_file": eval_file,
+        "eval_sha256": eval_sha,
+        "task": task_id,
+        "seed": args_cli.seed,
+        "checkpoint": args_cli.policy_checkpoint_path,
+        "num_envs": args_cli.num_envs,
+        "episode_length_s": env_cfg.episode_length_s,
+    }
+    writer = RolloutLogWriter(path, header)
+    print(f"[rollout] per-episode log: {writer.path}", flush=True)
+
+    # Same default path and hash line as data_verification.rollout_range.
+    range_file = os.path.join("outputs", "rollout_ranges", f"{os.path.splitext(os.path.basename(eval_file))[0]}.ttl")
+    regenerate = f"uv run python scripts/verify_object_position_coverage.py rollout-range --eval {eval_file}"
+    if not os.path.isfile(range_file):
+        print(f"[rollout] NOTE: no rollout range file {range_file} yet; before comparing, run: {regenerate}", flush=True)
+    else:
+        with open(range_file) as f:
+            hashes = set(re.findall(r'cp:sourceSha256 "([0-9a-f]{64})"', f.read()))
+        if hashes != {eval_sha}:
+            print(f"[rollout] NOTE: {eval_file} changed since {range_file} was generated; regenerate it: {regenerate}", flush=True)
+    return writer
+
+
 def main():
     task_id = resolve_task(args_cli.task)
     args_cli.task = task_id
@@ -541,6 +583,7 @@ def main():
     env_cfg.recorders = None
 
     env: ManagerBasedRLEnv = gym.make(task_id, cfg=env_cfg).unwrapped
+    rollout_log = open_rollout_log(env_cfg, task_id)
 
     # Warm up the renderer before the first reset. Headless Isaac Sim with
     # camera observations otherwise hangs the first env.reset() while the
@@ -618,6 +661,9 @@ def main():
             with torch.inference_mode():
                 obs_dict, _ = env.reset()
         needs_reset = True
+        # Initial positions of this round's episodes, right after the reset randomized them.
+        with torch.inference_mode():
+            start_positions = object_positions(env.scene, slice(0, batch), getattr(env_cfg, "tracked_object_names", None))
         policy.reset()
         controller.reset()
         done_mask = torch.zeros(num_envs, dtype=torch.bool, device=env.device)
@@ -644,6 +690,12 @@ def main():
                 if rate_limiter:
                     rate_limiter.sleep(env)
 
+        for e in range(batch):
+            status = "succeeded" if success_mask[e] else "failed" if done_mask[e] else "aborted"
+            positions = {name: values[e] for name, values in start_positions.items()}
+            rollout_log.write_episode(episodes_done + e, status, {OBJECT_POSITION_FACTOR: positions})
+        rollout_log.flush()
+
         round_success = int(success_mask[:batch].sum().item())
         success_count += round_success
         episodes_done += batch
@@ -658,6 +710,14 @@ def main():
             f"[Evaluation] Final success rate: {success_count / max_episode_count:.3f} "
             f" [{success_count}/{max_episode_count}]"
         )
+
+    rollout_log.close()
+    print(
+        f"[rollout] per-episode log written to {rollout_log.path}; compare it with your dataset:"
+        " uv run python scripts/verify_object_position_coverage.py compare --dataset <dataset> --spec <spec>"
+        f" --rollout-log {rollout_log.path}",
+        flush=True,
+    )
 
     env.close()
     simulation_app.close()

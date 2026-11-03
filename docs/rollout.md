@@ -71,6 +71,14 @@ python scripts/rollout.py \
     --eval_rounds=50
 ```
 
+Besides the success rate, every rollout writes a per-episode log to
+`outputs/rollout/<timestamp>.jsonl` (no flag needed): each episode's initial
+object positions and whether it succeeded. Comparing it with the dataset shows which
+rollout positions the dataset does not cover and where to record next
+([Object Position Coverage §8](object_position_coverage.md#8-compare-the-dataset-with-a-rollout)).
+At start, rollout also prints a note when the eval file's rollout range file is
+missing or out of date ([§8.1](object_position_coverage.md#81-generate-the-rollout-range-once)).
+
 ### Flag reference
 
 | Flag | Description |
