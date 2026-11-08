@@ -34,7 +34,7 @@ spec:OBJECT_NAME_requirement a cp:ObjectPositionAxisRequirement ;
 
 spec:OBJECT_NAME a cp:TaskObject ;
     # Must match the dataset column name object_position.OBJECT_NAME.
-    cp:hasName [ a cp:Name ; cp:nameValue "OBJECT_NAME" ] .
+    cp:name "OBJECT_NAME" .
 
 spec:OBJECT_NAME_area a cp:AreaConfiguration ;
     cp:hasCoverageGrid spec:OBJECT_NAME_grid ;

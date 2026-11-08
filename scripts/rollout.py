@@ -167,7 +167,6 @@ simulation_app = app_launcher.app
 
 import inspect
 import os
-import re
 import time
 import traceback
 from typing import Any
@@ -551,16 +550,6 @@ def open_rollout_log(env_cfg, task_id: str, env) -> RolloutLogWriter:
     writer = RolloutLogWriter(path, header)
     print(f"[rollout] per-episode log: {writer.path}", flush=True)
 
-    # Same default path and hash line as data_verification.rollout_range.
-    range_file = os.path.join("outputs", "rollout_ranges", f"{os.path.splitext(os.path.basename(eval_file))[0]}.ttl")
-    regenerate = f"uv run python scripts/verify_object_position_coverage.py rollout-range --eval {eval_file}"
-    if not os.path.isfile(range_file):
-        print(f"[rollout] NOTE: no rollout range file {range_file} yet; before comparing, run: {regenerate}", flush=True)
-    else:
-        with open(range_file) as f:
-            hashes = set(re.findall(r'cp:sourceSha256 "([0-9a-f]{64})"', f.read()))
-        if hashes != {eval_sha}:
-            print(f"[rollout] NOTE: {eval_file} changed since {range_file} was generated; regenerate it: {regenerate}", flush=True)
     return writer
 
 

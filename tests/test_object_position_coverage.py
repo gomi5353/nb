@@ -21,7 +21,7 @@ SPEC = """
 @prefix spec: <http://taica.course/cp/spec/test#> .
 
 spec:axis a cp:ObjectPositionAxis ; cp:hasRequirement spec:cube_requirement .
-spec:cube a cp:TaskObject ; cp:hasName [ a cp:Name ; cp:nameValue "cube" ] .
+spec:cube a cp:TaskObject ; cp:name "cube" .
 spec:cube_requirement a cp:ObjectPositionAxisRequirement ;
     cp:hasTaskObject spec:cube ;
     cp:minEpisodesPerCell 1 ;
@@ -266,7 +266,7 @@ def test_extra_shapes_example_from_docs(tmp_path: Path, spec: Path) -> None:
 
 
 def test_graph_out_writes_positions_and_cells(tmp_path: Path, spec: Path) -> None:
-    from rdflib import RDF, Graph
+    from rdflib import RDF, Graph, URIRef
 
     from data_verification.graph import CP
 
@@ -277,9 +277,11 @@ def test_graph_out_writes_positions_and_cells(tmp_path: Path, spec: Path) -> Non
     graph = Graph().parse(out, format="turtle")
     assert len(list(graph.subjects(RDF.type, CP.Episode))) == 4
     assert len(list(graph.subjects(RDF.type, CP.Position))) == 4
-    assert sorted(int(v) for v in graph.objects(None, CP.indexValue)) == [0, 0, 1, 1, 2, 2, 3, 3]  # 4 episodes, 4 cells
+    assert sorted(int(v) for v in graph.objects(None, CP["index"])) == [0, 0, 1, 1, 2, 2, 3, 3]  # 4 episodes, 4 cells
     assert len(list(graph.objects(None, CP.hasCell))) == 4
-    assert (None, CP.hasDataset, None) in graph
+    (dataset,) = graph.subjects(RDF.type, CP.Dataset)
+    assert graph.value(dataset, CP.hasGeneralizationAxis) == URIRef("http://taica.course/cp/spec/test#axis")
+    assert len(list(graph.objects(dataset, CP.hasEpisode))) == 4
 
 
 def test_cells_are_indexed_row_major(tmp_path: Path) -> None:
@@ -320,3 +322,73 @@ def test_grid_cell_count_must_match_width_times_height(tmp_path: Path) -> None:
     dataset = write_dataset(tmp_path / "ds", {i: {"cube": [xy]} for i, xy in enumerate(CELL_CENTERS)})
     report = verify_object_position_coverage(dataset, spec)
     assert "Coverage grid has 5 cell(s); numCellW * numCellH = 4" in [v.message for v in report.violations]
+
+
+def test_episodes_of_no_dataset_do_not_count(tmp_path: Path) -> None:
+    # An episode in the graph that the dataset does not have (here written into the spec) never covers a cell.
+    spec = tmp_path / "spec.ttl"
+    spec.write_text(
+        SPEC
+        + "spec:stray a cp:Episode ; cp:index 99 ; cp:hasTaskObject spec:stray_cube .\n"
+        + 'spec:stray_cube a cp:TaskObject ; cp:name "cube" ; cp:hasPosition spec:stray_pos .\n'
+        + "spec:stray_pos a cp:Position ; cp:positionX 0.15 ; cp:positionY 0.15 .\n"
+    )
+    dataset = write_dataset(tmp_path / "ds", {i: {"cube": [xy]} for i, xy in enumerate(CELL_CENTERS[:3])})
+    report = verify_object_position_coverage(dataset, spec)
+    assert report.coverage[0].counts == [[1, 1], [1, 0]]
+    assert "'cube' cell (i=1, j=1) x=[0.1, 0.2] y=[0.1, 0.2] has 0 episode(s); needs at least 1" in [v.message for v in report.violations]
+
+
+def _violations(tmp_path: Path, spec_text: str, points=CELL_CENTERS) -> list[str]:
+    spec = tmp_path / "spec.ttl"
+    spec.write_text("@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .\n" + spec_text)
+    dataset = write_dataset(tmp_path / "ds", {i: {"cube": [xy]} for i, xy in enumerate(points)})
+    return [v.message for v in verify_object_position_coverage(dataset, spec).violations]
+
+
+def test_min_episodes_per_cell_must_be_at_least_one(tmp_path: Path) -> None:
+    spec = tmp_path / "spec.ttl"
+    spec.write_text(_fill(render_spec(["cube"]), {**FILLED, "cp:minEpisodesPerCell": "0"}))
+    dataset = write_dataset(tmp_path / "ds", {0: {"cube": [(0.05, 0.05)]}})
+    report = verify_object_position_coverage(dataset, spec)
+    assert report.errors == ["cube: minEpisodesPerCell must be at least 1, got 0"]
+
+
+def test_requirement_belongs_to_one_axis(tmp_path: Path) -> None:
+    messages = _violations(tmp_path, SPEC + "spec:axis2 a cp:ObjectPositionAxis ; cp:hasRequirement spec:cube_requirement .\n")
+    assert "Requirement is linked from more than one axis (cp:hasRequirement); give each axis its own requirement" in messages
+
+
+def test_area_and_grid_belong_to_one_owner(tmp_path: Path) -> None:
+    second = """
+spec:axis cp:hasRequirement spec:cube2_requirement .
+spec:cube2_requirement a cp:ObjectPositionAxisRequirement ;
+    cp:hasTaskObject [ a cp:TaskObject ; cp:name "cube" ] ;
+    cp:minEpisodesPerCell 1 ;
+    cp:hasAreaConfiguration spec:cube_area .
+spec:other_area a cp:AreaConfiguration ;
+    cp:areaXMin 0.0 ; cp:areaXMax 0.4 ; cp:areaYMin 0.0 ; cp:areaYMax 0.4 ;
+    cp:hasCoverageGrid spec:cube_grid .
+"""
+    messages = _violations(tmp_path, SPEC + second)
+    assert "Area must belong to exactly one requirement (cp:hasAreaConfiguration); give each requirement its own area" in messages
+    assert "Grid must belong to exactly one area (cp:hasCoverageGrid); give each area its own grid" in messages
+
+
+def test_cell_index_must_be_unique_and_inside_the_grid(tmp_path: Path) -> None:
+    extra = "spec:cube_grid cp:hasCell spec:c_dup, spec:c_out .\nspec:c_dup a cp:Cell ; cp:index \"0\"^^xsd:nonNegativeInteger .\nspec:c_out a cp:Cell ; cp:index \"9\"^^xsd:nonNegativeInteger .\n"
+    messages = _violations(tmp_path, SPEC + extra)
+    assert "Coverage grid has more than one cell with index 0" in messages
+    assert "Cell index 9 is outside the grid (0 to numCellW * numCellH - 1)" in messages
+
+
+def test_orphan_cell_is_reported(tmp_path: Path) -> None:
+    messages = _violations(tmp_path, SPEC + "spec:orphan a cp:Cell ; cp:index \"0\"^^xsd:nonNegativeInteger .\n")
+    assert "Cell must belong to exactly one coverage grid (cp:hasCell)" in messages
+
+
+def test_episode_index_must_be_unique(tmp_path: Path) -> None:
+    # A second episode node with the index of a recorded one, linked from the dataset.
+    extra = "<http://taica.course/cp/data/ds> cp:hasEpisode spec:twin .\nspec:twin a cp:Episode ; cp:index \"0\"^^xsd:nonNegativeInteger .\n"
+    messages = _violations(tmp_path, SPEC + extra)
+    assert "Dataset has more than one episode with index 0" in messages

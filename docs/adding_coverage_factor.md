@@ -165,10 +165,12 @@ A clearly named ontology goes under
 `packages/data_verification/src/data_verification/ontology/`, such as
 `lighting.ttl`. A new factor is a new generalization axis: its axis class
 subclasses `cp:GeneralizationAxis` and its requirement class subclasses
-`cp:AxisRequirement`, so it reuses `cp:hasRequirement` and `cp:hasDataset`
-from `object_position.ttl` (both allow any `cp:GeneralizationAxis`). Episodes,
-their `cp:Index`, and the dataset are shared with the object-position factor.
-A minimal vocabulary:
+`cp:AxisRequirement`, so it reuses `cp:hasRequirement` and
+`cp:hasGeneralizationAxis` from `object_position.ttl`: the dataset has every axis
+of the specification. Episodes (with their `cp:index`), runs, and the dataset are
+shared with the object-position factor. Each class is described by what its
+members have (`rdfs:subClassOf` an `owl:Restriction`), as in
+`object_position.ttl`. A minimal vocabulary:
 
 ```turtle
 @prefix cp:   <http://taica.course/cp/ontology#> .
@@ -177,17 +179,21 @@ A minimal vocabulary:
 @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
 
 cp:LightingAxis a owl:Class ;
-    rdfs:subClassOf cp:GeneralizationAxis .
+    rdfs:subClassOf cp:GeneralizationAxis ,
+        [ a owl:Restriction ; owl:onProperty cp:hasRequirement ; owl:allValuesFrom cp:LightingAxisRequirement ] .
 cp:LightingAxisRequirement a owl:Class ;
-    rdfs:subClassOf cp:AxisRequirement .
+    rdfs:subClassOf cp:AxisRequirement ,
+        [ a owl:Restriction ; owl:onProperty cp:minLux ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onDataRange xsd:decimal ] ,
+        [ a owl:Restriction ; owl:onProperty cp:maxLux ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onDataRange xsd:decimal ] ,
+        [ a owl:Restriction ; owl:onProperty cp:numberOfBins ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onDataRange xsd:positiveInteger ] ,
+        [ a owl:Restriction ; owl:onProperty cp:minEpisodesPerBin ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onDataRange xsd:positiveInteger ] .
 
-cp:LightingCondition a owl:Class .
-cp:hasLightingCondition a owl:ObjectProperty ;
-    rdfs:domain cp:Episode ;
-    rdfs:range cp:LightingCondition .
-cp:lightIntensityLux a owl:DatatypeProperty ;
-    rdfs:domain cp:LightingCondition ;
-    rdfs:range xsd:double .
+# One value per episode (dataset) and per finished run (rollout).
+cp:lightIntensityLux a owl:DatatypeProperty ; rdfs:range xsd:decimal .
+cp:minLux a owl:DatatypeProperty ; rdfs:range xsd:decimal .
+cp:maxLux a owl:DatatypeProperty ; rdfs:range xsd:decimal .
+cp:numberOfBins a owl:DatatypeProperty ; rdfs:range xsd:positiveInteger .
+cp:minEpisodesPerBin a owl:DatatypeProperty ; rdfs:range xsd:positiveInteger .
 ```
 
 OWL defines the concepts and relationships; executable constraints belong in
@@ -198,15 +204,15 @@ SHACL.
 **Required**
 
 [`graph.py`](../packages/data_verification/src/data_verification/graph.py) is the
-example. The graph builder creates one factor node for every episode, for
+example. The graph builder adds the factor's value to every episode, for
 example:
 
 ```turtle
-data:episode_7 a cp:Episode ;
-    cp:hasIndex data:episode_7_index ;
-    cp:hasLightingCondition data:episode_7_lighting .
+data:my_dataset cp:hasGeneralizationAxis spec:object_position_axis , spec:lighting_axis ;
+    cp:hasEpisode data:my_dataset/episode/7 .
 
-data:episode_7_lighting a cp:LightingCondition ;
+data:my_dataset/episode/7 a cp:Episode ;
+    cp:index 7 ;
     cp:lightIntensityLux 612.0 .
 ```
 
@@ -246,7 +252,9 @@ meant to detect.
 `expand_cells()` in
 [`graph.py`](../packages/data_verification/src/data_verification/graph.py) adds
 `numCellW × numCellH` cells to each object-position grid; each cell stores only
-its row-major `cp:Index`, and the SHACL rule computes its bounds from the area.
+its row-major `cp:index`, and the SHACL rule computes its bounds from the area.
+Only the episodes of the dataset that has the requirement's axis count
+(`?dataset cp:hasGeneralizationAxis ?axis ; cp:hasEpisode ?episode`).
 The extension adds an equivalent expansion function:
 
 - numeric factor: intervals;
@@ -301,27 +309,14 @@ The `compare` subcommand of
 [`verify_object_position_coverage.py`](../scripts/verify_object_position_coverage.py)
 checks, after a rollout, whether the dataset covers the conditions the rollout
 actually ran ([Object Position Coverage §8](object_position_coverage.md#8-compare-the-dataset-with-a-rollout)).
-A run counts as *in distribution* only when it is covered on **every** axis, so
-a new factor joins the comparison by adding its own axis. Four additions, each
-next to the object-position one:
+The comparison starts from the `cp:Rollout`: it has the dataset the policy was
+trained on (`cp:hasDataset`), whose axes give the requirements, and its runs
+(`cp:hasRun`), each with a `cp:status` and the values it started with. A run
+counts as *in distribution* only when it is covered on **every** axis, so a new
+factor joins the comparison with two additions, next to the object-position
+ones. No eval file is read: the runs' own values show what the rollout used.
 
-1. **Range class.** In the factor's ontology, a subclass of `cp:RolloutRange`
-   that a `cp:Rollout` points to with `cp:hasRolloutRange`:
-
-   ```turtle
-   cp:LightingRolloutRange a owl:Class ;
-       rdfs:subClassOf cp:RolloutRange .
-   cp:minLux a owl:DatatypeProperty ; rdfs:domain cp:LightingRolloutRange ; rdfs:range xsd:decimal .
-   cp:maxLux a owl:DatatypeProperty ; rdfs:domain cp:LightingRolloutRange ; rdfs:range xsd:decimal .
-   ```
-
-   Like `cp:ObjectPositionRolloutRange`, it carries `cp:sourceFile` and
-   `cp:sourceSha256` of the eval file it was read from.
-2. **Range generator.** Extend
-   [`rollout_range.py`](../packages/data_verification/src/data_verification/rollout_range.py)
-   to read the factor's randomization from the eval file (for lighting, the
-   `intensity_range` of `randomize_light_conditions`) and write the range node.
-3. **Rollout log.** In `scripts/rollout.py`, log each episode's sampled value
+1. **Rollout log.** In `scripts/rollout.py`, log each run's sampled value
    under the factor's own key, next to `object_position`:
 
    ```json
@@ -331,17 +326,19 @@ next to the object-position one:
 
    The format is described in
    [`rollout_log.py`](../packages/simulator/src/simulator/utils/rollout_log.py);
-   `add_rollout()` in `graph.py` adds the value to the rollout's episodes.
-4. **Axis comparer.** A function `(graph, result, requirements) ->
+   extend `add_rollout()` in `graph.py` to add the value to each `cp:Run`, and
+   require it on every finished run in a SHACL shape targeting `cp:Rollout`.
+2. **Axis comparer.** A function `(graph, rollout, result, requirements) ->
    AxisComparison` appended to `ROLLOUT_AXES` in
    [`rollout_comparison.py`](../packages/data_verification/src/data_verification/rollout_comparison.py).
-   It splits the rollout range into the student's bin size, counts the runs
-   per rollout bin, marks a bin covered when every student bin it overlaps
-   meets the minimum, and returns, for each run, whether its bin is covered.
-   `compare_object_position()` is the example.
+   It places each finished run into a bin of the student's own binning (a value
+   outside the student's domain falls into a bin of the same width outside
+   it), marks the run covered when its bin is inside the domain and has at
+   least the minimum number of dataset episodes, and returns, for each run,
+   whether it is covered. `compare_object_position()` is the example.
 
-The rollout bins have no minimum: they only record where the rollout ran and
-whether it succeeded. The minimum belongs to the dataset's bins.
+Runs have no minimum: they only record where the rollout ran and whether it
+succeeded. The minimum belongs to the dataset's bins.
 
 ## 12. Test the complete path
 

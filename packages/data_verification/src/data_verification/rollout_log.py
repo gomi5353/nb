@@ -21,10 +21,18 @@ class RolloutLogError(ValueError):
 
 
 @dataclass
-class RolloutEpisode:
+class RolloutRun:
     index: int
-    succeeded: bool
+    status: str
     factors: dict[str, dict]
+
+    @property
+    def succeeded(self) -> bool:
+        return self.status == "succeeded"
+
+    @property
+    def finished(self) -> bool:
+        return self.status != "aborted"
 
     @property
     def object_positions(self) -> dict[str, tuple[float, float]]:
@@ -36,8 +44,25 @@ class RolloutEpisode:
 class RolloutLog:
     path: Path
     header: dict
-    episodes: list[RolloutEpisode] = field(default_factory=list)
-    aborted: int = 0
+    runs: list[RolloutRun] = field(default_factory=list)
+    """Every run in the log, aborted ones included."""
+
+    @property
+    def finished_runs(self) -> list[RolloutRun]:
+        """Succeeded and failed runs: the ones that are counted and compared."""
+        return [r for r in self.runs if r.finished]
+
+    @property
+    def finished(self) -> int:
+        return len(self.finished_runs)
+
+    @property
+    def successes(self) -> int:
+        return sum(r.succeeded for r in self.runs)
+
+    @property
+    def aborted(self) -> int:
+        return len(self.runs) - self.finished
 
     @property
     def name(self) -> str:
@@ -73,12 +98,9 @@ def read_rollout_log(path: str | Path) -> RolloutLog:
         if index in seen:
             raise RolloutLogError(f"{path}: episode {index} appears twice")
         seen.add(index)
-        if status == "aborted":
-            log.aborted += 1
-            continue
-        episode = RolloutEpisode(index, status == "succeeded", record.get("factors", {}))
-        for name, (x, y) in episode.object_positions.items():
+        run = RolloutRun(index, status, record.get("factors", {}))
+        for name, (x, y) in run.object_positions.items():
             if not (math.isfinite(x) and math.isfinite(y)):
                 raise RolloutLogError(f"{path}: episode {index}: non-finite position for '{name}'")
-        log.episodes.append(episode)
+        log.runs.append(run)
     return log

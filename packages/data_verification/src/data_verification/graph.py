@@ -1,11 +1,11 @@
-"""Turn a coverage spec and a dataset's initial positions into one RDF graph."""
+"""Turn a coverage spec, a dataset's initial positions and a rollout log into one RDF graph."""
 
 from __future__ import annotations
 
 from decimal import Decimal
 from urllib.parse import quote
 
-from rdflib import RDF, XSD, BNode, Graph, Literal, Namespace, URIRef
+from rdflib import RDF, XSD, Graph, Literal, Namespace, URIRef
 
 from .dataset import DatasetPlacements
 from .rollout_log import RolloutLog
@@ -13,6 +13,10 @@ from .rollout_log import RolloutLog
 CP = Namespace("http://taica.course/cp/ontology#")
 
 AREA_BOUNDS = (CP.areaXMin, CP.areaXMax, CP.areaYMin, CP.areaYMax)
+
+
+def dataset_iri(dataset_name: str) -> URIRef:
+    return URIRef(f"http://taica.course/cp/data/{quote(dataset_name, safe='')}")
 
 
 def expand_cells(graph: Graph) -> None:
@@ -42,98 +46,64 @@ def expand_cells(graph: Graph) -> None:
             cell = URIRef(f"{base}/cell/{k}")
             graph.add((cell, RDF.type, CP.Cell))
             graph.add((grid, CP.hasCell, cell))
-            graph.add((cell, CP.hasIndex, _index(URIRef(f"{cell}/index"), k, graph)))
-
-
-def add_rollout_grid(graph: Graph, area: URIRef | BNode, size_x: Decimal, size_y: Decimal, nw: int, nh: int) -> URIRef:
-    """Give a rollout range's area a grid of ``size_x`` by ``size_y`` cells, ``nw`` by ``nh``, with its cells."""
-    base = str(area) if isinstance(area, URIRef) else f"urn:cp:area:{area}"
-    grid = URIRef(f"{base}/rollout_grid")
-    graph.add((area, CP.hasCoverageGrid, grid))
-    graph.add((grid, RDF.type, CP.CoverageGrid))
-    graph.add((grid, CP.cellSizeX, Literal(size_x, datatype=XSD.decimal)))
-    graph.add((grid, CP.cellSizeY, Literal(size_y, datatype=XSD.decimal)))
-    graph.add((grid, CP.numCellW, Literal(nw, datatype=XSD.positiveInteger)))
-    graph.add((grid, CP.numCellH, Literal(nh, datatype=XSD.positiveInteger)))
-    for k in range(nw * nh):
-        cell = URIRef(f"{grid}/cell/{k}")
-        graph.add((cell, RDF.type, CP.Cell))
-        graph.add((grid, CP.hasCell, cell))
-        graph.add((cell, CP.hasIndex, _index(URIRef(f"{cell}/index"), k, graph)))
-    return grid
+            graph.add((cell, CP["index"], _index(k)))
 
 
 def add_dataset(graph: Graph, dataset_name: str, data: DatasetPlacements) -> URIRef:
-    """Add the dataset, its episodes and the objects' finite initial positions; link it from every axis."""
-    dataset = URIRef(f"http://taica.course/cp/data/{quote(dataset_name, safe='')}")
+    """Add the dataset with every axis of the spec, its episodes and the objects' finite initial positions."""
+    dataset = dataset_iri(dataset_name)
     graph.add((dataset, RDF.type, CP.Dataset))
-    for axis in set(graph.subjects(RDF.type, CP.ObjectPositionAxis)):
-        graph.add((axis, CP.hasDataset, dataset))
-
-    # One Name node per object, shared by its TaskObject in every episode.
-    names = {}
-    for name in data.object_names:
-        names[name] = URIRef(f"{dataset}/name/{quote(name, safe='')}")
-        graph.add((names[name], RDF.type, CP.Name))
-        graph.add((names[name], CP.nameValue, Literal(name)))
+    axes = set(graph.subjects(CP.hasRequirement, None))
+    axes |= set(graph.subjects(RDF.type, CP.GeneralizationAxis)) | set(graph.subjects(RDF.type, CP.ObjectPositionAxis))
+    for axis in axes:
+        graph.add((dataset, CP.hasGeneralizationAxis, axis))
 
     for episode_index in data.episode_indices:
         episode = URIRef(f"{dataset}/episode/{episode_index}")
         graph.add((episode, RDF.type, CP.Episode))
-        graph.add((episode, CP.hasIndex, _index(URIRef(f"{episode}/index"), episode_index, graph)))
+        graph.add((episode, CP["index"], _index(episode_index)))
         graph.add((dataset, CP.hasEpisode, episode))
 
     for placement in data.placements:
         if not placement.is_finite:
             continue
         episode = URIRef(f"{dataset}/episode/{placement.episode_index}")
-        obj = URIRef(f"{episode}/object/{quote(placement.object_name, safe='')}")
-        position = URIRef(f"{obj}/position")
-        graph.add((obj, RDF.type, CP.TaskObject))
-        graph.add((obj, CP.hasName, names[placement.object_name]))
-        graph.add((obj, CP.hasPosition, position))
-        graph.add((position, RDF.type, CP.Position))
-        graph.add((position, CP.positionX, _decimal(placement.x)))
-        graph.add((position, CP.positionY, _decimal(placement.y)))
-        graph.add((episode, CP.hasTaskObject, obj))
+        _add_task_object(graph, episode, placement.object_name, placement.x, placement.y)
     return dataset
 
 
-def add_rollout(graph: Graph, log: RolloutLog) -> URIRef:
-    """Add the rollout, its finished episodes with outcome and initial positions; link it to every rollout range."""
+def add_rollout(graph: Graph, log: RolloutLog, dataset: URIRef) -> URIRef:
+    """Add the rollout of ``log`` with its training ``dataset``, its runs, their status and initial positions."""
     rollout = URIRef(f"http://taica.course/cp/rollout/{quote(log.name, safe='')}")
     graph.add((rollout, RDF.type, CP.Rollout))
-    for rng in set(graph.subjects(RDF.type, CP.ObjectPositionRolloutRange)):
-        graph.add((rollout, CP.hasRolloutRange, rng))
-
-    names: dict[str, URIRef] = {}
-    for ep in log.episodes:
-        episode = URIRef(f"{rollout}/episode/{ep.index}")
-        graph.add((episode, RDF.type, CP.Episode))
-        graph.add((episode, CP.hasIndex, _index(URIRef(f"{episode}/index"), ep.index, graph)))
-        graph.add((episode, CP.succeeded, Literal(ep.succeeded)))
-        graph.add((rollout, CP.hasEpisode, episode))
-        for name, (x, y) in ep.object_positions.items():
-            if name not in names:
-                names[name] = URIRef(f"{rollout}/name/{quote(name, safe='')}")
-                graph.add((names[name], RDF.type, CP.Name))
-                graph.add((names[name], CP.nameValue, Literal(name)))
-            obj = URIRef(f"{episode}/object/{quote(name, safe='')}")
-            position = URIRef(f"{obj}/position")
-            graph.add((obj, RDF.type, CP.TaskObject))
-            graph.add((obj, CP.hasName, names[name]))
-            graph.add((obj, CP.hasPosition, position))
-            graph.add((position, RDF.type, CP.Position))
-            graph.add((position, CP.positionX, _decimal(x)))
-            graph.add((position, CP.positionY, _decimal(y)))
-            graph.add((episode, CP.hasTaskObject, obj))
+    graph.add((rollout, CP.hasDataset, dataset))
+    graph.add((rollout, CP.successEpisodes, _index(log.successes)))
+    graph.add((rollout, CP.totalEpisodes, _index(log.finished)))
+    for r in log.runs:
+        run = URIRef(f"{rollout}/run/{r.index}")
+        graph.add((run, RDF.type, CP.Run))
+        graph.add((run, CP["index"], _index(r.index)))
+        graph.add((run, CP.status, Literal(r.status)))
+        graph.add((rollout, CP.hasRun, run))
+        for name, (x, y) in r.object_positions.items():
+            _add_task_object(graph, run, name, x, y)
     return rollout
 
 
-def _index(node: URIRef | BNode, value: int, graph: Graph) -> URIRef | BNode:
-    graph.add((node, RDF.type, CP.Index))
-    graph.add((node, CP.indexValue, Literal(value, datatype=XSD.nonNegativeInteger)))
-    return node
+def _add_task_object(graph: Graph, owner: URIRef, name: str, x: float, y: float) -> None:
+    obj = URIRef(f"{owner}/object/{quote(name, safe='')}")
+    position = URIRef(f"{obj}/position")
+    graph.add((obj, RDF.type, CP.TaskObject))
+    graph.add((obj, CP.name, Literal(name)))
+    graph.add((obj, CP.hasPosition, position))
+    graph.add((position, RDF.type, CP.Position))
+    graph.add((position, CP.positionX, _decimal(x)))
+    graph.add((position, CP.positionY, _decimal(y)))
+    graph.add((owner, CP.hasTaskObject, obj))
+
+
+def _index(value: int) -> Literal:
+    return Literal(value, datatype=XSD.nonNegativeInteger)
 
 
 def _decimal(value: float) -> Literal:

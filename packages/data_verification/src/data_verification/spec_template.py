@@ -71,7 +71,7 @@ def requirement_object_name(graph, node) -> str | None:
     if (None, CP.hasAreaConfiguration, node) in graph:
         node = graph.value(None, CP.hasAreaConfiguration, node)
     obj = graph.value(node, CP.hasTaskObject)
-    name = graph.value(graph.value(obj, CP.hasName), CP.nameValue) if obj is not None else None
+    name = graph.value(obj, CP.name) if obj is not None else None
     return None if name is None else str(name)
 
 
@@ -109,7 +109,7 @@ def value_range_errors(graph) -> list[str]:
                 f"{name}: coverage area is empty: areaXMin must be < areaXMax and areaYMin < areaYMax, "
                 f"got x {x0}..{x1}, y {y0}..{y1}"
             )
-    for field, low in (("numCellW", 1), ("numCellH", 1), ("minEpisodesPerCell", 0)):
+    for field, low in (("numCellW", 1), ("numCellH", 1), ("minEpisodesPerCell", 1)):
         for subject, value in graph.subject_objects(CP[field]):
             if value.toPython() < low:
                 name = requirement_object_name(graph, subject) or subject

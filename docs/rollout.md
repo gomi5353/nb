@@ -80,8 +80,6 @@ positions of the randomized objects and whether it succeeded. The first line
 only; the comparison ignores them. Comparing it with the dataset shows which
 rollout positions the dataset does not cover and where to record next
 ([Object Position Coverage §8](object_position_coverage.md#8-compare-the-dataset-with-a-rollout)).
-At start, rollout also prints a note when the eval file's rollout range file is
-missing or out of date ([§8.1](object_position_coverage.md#81-generate-the-rollout-range-once)).
 
 ### Flag reference
 

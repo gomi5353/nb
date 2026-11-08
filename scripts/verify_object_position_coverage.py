@@ -13,10 +13,8 @@ Guide: docs/object_position_coverage.md
   uv run python scripts/verify_object_position_coverage.py check \\
       --dataset datasets/<repo_id> --spec specs/my_coverage.ttl
 
-  # 3. After a rollout (scripts/rollout.py writes outputs/rollout/<timestamp>.jsonl):
-  #    read the eval file's randomization ranges once, and again whenever it changes,
-  uv run python scripts/verify_object_position_coverage.py rollout-range --eval eval/<task>_eval.py
-  #    then compare where the rollout's runs started with where your dataset covers
+  # 3. After a rollout (scripts/rollout.py writes outputs/rollout/<timestamp>.jsonl),
+  #    compare where its runs started with where the dataset the policy was trained on covers
   uv run python scripts/verify_object_position_coverage.py compare \\
       --dataset datasets/<repo_id> --spec specs/my_coverage.ttl \\
       --rollout-log outputs/rollout/<timestamp>.jsonl
@@ -37,7 +35,6 @@ from data_verification import (
     write_spec,
 )
 from data_verification.dataset import DatasetError, read_initial_placements
-from data_verification.rollout_range import RolloutRangeError, write_range_file
 
 GRAPH_DIR = Path("outputs/object_position_coverage")
 
@@ -79,25 +76,11 @@ def cmd_check(args: argparse.Namespace) -> int:
     return 0 if report.passed and not (args.strict and report.warnings) else 1
 
 
-def cmd_rollout_range(args: argparse.Namespace) -> int:
-    try:
-        path, task = write_range_file(args.eval, args.out)
-    except RolloutRangeError as exc:
-        print(f"ERROR  {exc}", file=sys.stderr)
-        return 1
-    print(f"Wrote {path} from {task.source_file} (SHA-256 {task.sha256[:12]}):")
-    for r in task.ranges:
-        print(f"  {r.name}: x {r.x_range[0]}..{r.x_range[1]}  y {r.y_range[0]}..{r.y_range[1]}")
-    return 0
-
-
 def cmd_compare(args: argparse.Namespace) -> int:
     graph_out = None
     if not args.no_graph_out:
         graph_out = GRAPH_DIR / f"{args.dataset.resolve().name}__rollout_{args.rollout_log.stem}.ttl"
-    result = compare_rollout(
-        args.dataset, args.spec, args.rollout_log, args.rollout_range, record_cfg=args.record_cfg, graph_out=graph_out
-    )
+    result = compare_rollout(args.dataset, args.spec, args.rollout_log, graph_out=graph_out)
     print(format_comparison(result))
     if graph_out is not None and graph_out.exists():
         print(f"Graph written to {graph_out}")
@@ -132,27 +115,12 @@ def main() -> int:
     )
     check.set_defaults(func=cmd_check)
 
-    rollout_range = sub.add_parser(
-        "rollout-range", help="Read an eval file's object position randomization into a rollout range file."
-    )
-    rollout_range.add_argument("--eval", required=True, type=Path, help="Evaluation task file, e.g. eval/cup_stacking_eval.py.")
-    rollout_range.add_argument(
-        "--out", type=Path, help="Range file to write (default: outputs/rollout_ranges/<eval file stem>.ttl). Overwritten."
-    )
-    rollout_range.set_defaults(func=cmd_rollout_range)
-
     compare = sub.add_parser("compare", help="Compare a finished rollout's run positions with the dataset's coverage.")
-    compare.add_argument("--dataset", required=True, type=Path, help="Local LeRobot v3 dataset directory.")
+    compare.add_argument(
+        "--dataset", required=True, type=Path, help="The local LeRobot v3 dataset the rollout's policy was trained on."
+    )
     compare.add_argument("--spec", required=True, type=Path, help="Your coverage spec (.ttl); gives the cell size.")
     compare.add_argument("--rollout-log", required=True, type=Path, help="outputs/rollout/<timestamp>.jsonl written by scripts/rollout.py.")
-    compare.add_argument(
-        "--rollout-range",
-        type=Path,
-        help="Rollout range file (default: outputs/rollout_ranges/<stem of the eval file the rollout ran>.ttl).",
-    )
-    compare.add_argument(
-        "--record-cfg", type=Path, help="Your recording task cfg; also print pose ranges that cover the cells to record in."
-    )
     compare.add_argument("--json", type=Path, help="Also write the full comparison as JSON.")
     compare.add_argument(
         "--no-graph-out",
