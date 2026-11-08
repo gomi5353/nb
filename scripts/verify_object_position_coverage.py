@@ -12,6 +12,12 @@ Guide: docs/object_position_coverage.md
   # 2. Replace every "TODO" in the spec with your own numbers, then check
   uv run python scripts/verify_object_position_coverage.py check \\
       --dataset datasets/<repo_id> --spec specs/my_coverage.ttl
+
+  # 3. After a rollout (scripts/rollout.py writes outputs/rollout/<timestamp>.jsonl),
+  #    compare where its runs started with where the dataset the policy was trained on covers
+  uv run python scripts/verify_object_position_coverage.py compare \\
+      --dataset datasets/<repo_id> --spec specs/my_coverage.ttl \\
+      --rollout-log outputs/rollout/<timestamp>.jsonl
 """
 
 from __future__ import annotations
@@ -21,7 +27,13 @@ import json
 import sys
 from pathlib import Path
 
-from data_verification import format_report, verify_object_position_coverage, write_spec
+from data_verification import (
+    compare_rollout,
+    format_comparison,
+    format_report,
+    verify_object_position_coverage,
+    write_spec,
+)
 from data_verification.dataset import DatasetError, read_initial_placements
 
 GRAPH_DIR = Path("outputs/object_position_coverage")
@@ -64,6 +76,20 @@ def cmd_check(args: argparse.Namespace) -> int:
     return 0 if report.passed and not (args.strict and report.warnings) else 1
 
 
+def cmd_compare(args: argparse.Namespace) -> int:
+    graph_out = None
+    if not args.no_graph_out:
+        graph_out = GRAPH_DIR / f"{args.dataset.resolve().name}__rollout_{args.rollout_log.stem}.ttl"
+    result = compare_rollout(args.dataset, args.spec, args.rollout_log, graph_out=graph_out)
+    print(format_comparison(result))
+    if graph_out is not None and graph_out.exists():
+        print(f"Graph written to {graph_out}")
+    if args.json:
+        args.json.parent.mkdir(parents=True, exist_ok=True)
+        args.json.write_text(json.dumps(result.to_dict(), indent=2) + "\n")
+    return 0 if result.passed and not (args.strict and result.warnings) else 1
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -88,6 +114,21 @@ def main() -> int:
         "--extra-shapes", type=Path, action="append", default=[], help="Additional SHACL rules (.ttl); repeatable."
     )
     check.set_defaults(func=cmd_check)
+
+    compare = sub.add_parser("compare", help="Compare a finished rollout's run positions with the dataset's coverage.")
+    compare.add_argument(
+        "--dataset", required=True, type=Path, help="The local LeRobot v3 dataset the rollout's policy was trained on."
+    )
+    compare.add_argument("--spec", required=True, type=Path, help="Your coverage spec (.ttl); gives the cell size.")
+    compare.add_argument("--rollout-log", required=True, type=Path, help="outputs/rollout/<timestamp>.jsonl written by scripts/rollout.py.")
+    compare.add_argument("--json", type=Path, help="Also write the full comparison as JSON.")
+    compare.add_argument(
+        "--no-graph-out",
+        action="store_true",
+        help=f"Do not write the RDF graph (default: {GRAPH_DIR}/<dataset>__rollout_<run>.ttl).",
+    )
+    compare.add_argument("--strict", action="store_true", help="Also fail on warnings (runs the dataset does not cover).")
+    compare.set_defaults(func=cmd_compare)
 
     args = parser.parse_args()
     return args.func(args)

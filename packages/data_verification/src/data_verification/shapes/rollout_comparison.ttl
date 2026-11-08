@@ -1,0 +1,119 @@
+# SHACL rules for the rollout side of the rollout-vs-dataset comparison.
+#
+# Run by the compare subcommand; the dataset itself is checked by the check
+# subcommand. The comparison starts from the cp:Rollout: its training dataset
+# (cp:hasDataset) gives the requirements, its runs (cp:hasRun) the positions.
+# Severity:
+#   sh:Violation - the rollout is malformed; the comparison stops
+#   sh:Warning   - reported, does not fail unless --strict
+#
+# Queries use plain triple patterns, not property paths (see
+# object_position_coverage.ttl).
+
+@prefix cp:   <http://taica.course/cp/ontology#> .
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+
+cp: a owl:Ontology ;
+    sh:declare [ sh:prefix "cp" ; sh:namespace "http://taica.course/cp/ontology#"^^xsd:anyURI ] .
+
+# ---- Rollout: training dataset, runs, counts ----------------------------------
+
+cp:RolloutShape a sh:NodeShape ;
+    sh:targetClass cp:Rollout ;
+    sh:property [
+        sh:path cp:hasDataset ; sh:class cp:Dataset ; sh:minCount 1 ; sh:maxCount 1 ;
+        sh:message "Rollout must have exactly one training dataset (cp:hasDataset)" ;
+    ] ;
+    sh:property [
+        sh:path cp:hasRun ; sh:class cp:Run ; sh:minCount 1 ;
+        sh:message "Rollout has no run" ;
+    ] ;
+    sh:property [
+        sh:path cp:hasRun ;
+        sh:qualifiedValueShape [ sh:path cp:status ; sh:in ( "succeeded" "failed" ) ] ; sh:qualifiedMinCount 1 ;
+        sh:message "Rollout has no finished run (all aborted)" ;
+    ] ;
+    sh:sparql [
+        sh:message "Rollout has more than one run with index {?index}" ;
+        sh:prefixes cp: ;
+        sh:select """
+            SELECT DISTINCT $this ?index WHERE {
+                $this cp:hasRun ?r1, ?r2 .
+                ?r1 cp:index ?index . ?r2 cp:index ?index .
+                FILTER (?r1 != ?r2)
+            }
+        """ ;
+    ] ;
+    sh:property [ sh:path cp:successEpisodes ; sh:datatype xsd:nonNegativeInteger ; sh:minCount 1 ; sh:maxCount 1 ] ;
+    sh:property [ sh:path cp:totalEpisodes ; sh:datatype xsd:nonNegativeInteger ; sh:minCount 1 ; sh:maxCount 1 ] ;
+    sh:sparql [
+        sh:message "Rollout totalEpisodes is {?total} but it has {?n} finished run(s)" ;
+        sh:prefixes cp: ;
+        sh:select """
+            SELECT $this ?total (COUNT(DISTINCT ?run) AS ?n) WHERE {
+                $this cp:totalEpisodes ?total .
+                OPTIONAL { $this cp:hasRun ?run . ?run cp:status ?s . FILTER (?s IN ("succeeded", "failed")) }
+            }
+            GROUP BY $this ?total
+            HAVING (COUNT(DISTINCT ?run) != ?total)
+        """ ;
+    ] ;
+    sh:sparql [
+        sh:message "Rollout successEpisodes is {?success} but it has {?n} succeeded run(s)" ;
+        sh:prefixes cp: ;
+        sh:select """
+            SELECT $this ?success (COUNT(DISTINCT ?run) AS ?n) WHERE {
+                $this cp:successEpisodes ?success .
+                OPTIONAL { $this cp:hasRun ?run . ?run cp:status "succeeded" . }
+            }
+            GROUP BY $this ?success
+            HAVING (COUNT(DISTINCT ?run) != ?success)
+        """ ;
+    ] ;
+    sh:sparql [
+        sh:message "Finished run {?index} has no initial position for '{?name}', which the training dataset's spec requires" ;
+        sh:prefixes cp: ;
+        sh:select """
+            SELECT $this ?index ?name WHERE {
+                $this cp:hasDataset ?dataset ; cp:hasRun ?run .
+                ?run cp:index ?index .
+                ?run cp:status ?s . FILTER (?s IN ("succeeded", "failed"))
+                ?dataset cp:hasGeneralizationAxis ?axis .
+                ?axis cp:hasRequirement ?req .
+                ?req a cp:ObjectPositionAxisRequirement ; cp:hasTaskObject ?reqObj .
+                ?reqObj cp:name ?name .
+                FILTER NOT EXISTS {
+                    ?run cp:hasTaskObject ?obj .
+                    ?obj cp:name ?name ; cp:hasPosition ?p .
+                }
+            }
+        """ ;
+    ] .
+
+# ---- Run: index, status, objects with positions -------------------------------
+
+cp:RunShape a sh:NodeShape ;
+    sh:targetClass cp:Run ;
+    sh:property [ sh:path cp:index ; sh:datatype xsd:nonNegativeInteger ; sh:minCount 1 ; sh:maxCount 1 ] ;
+    sh:property [
+        sh:path cp:status ; sh:in ( "succeeded" "failed" "aborted" ) ; sh:minCount 1 ; sh:maxCount 1 ;
+        sh:message "Run must have exactly one status: succeeded, failed or aborted" ;
+    ] ;
+    sh:property [ sh:path cp:hasTaskObject ; sh:class cp:TaskObject ; sh:node cp:RunTaskObjectShape ] ;
+    sh:sparql [
+        sh:message "Run has more than one task object named '{?name}'" ;
+        sh:prefixes cp: ;
+        sh:select """
+            SELECT $this ?name WHERE {
+                $this cp:hasTaskObject ?o1, ?o2 .
+                ?o1 cp:name ?name . ?o2 cp:name ?name .
+                FILTER (STR(?o1) < STR(?o2))
+            }
+        """ ;
+    ] .
+
+cp:RunTaskObjectShape a sh:NodeShape ;
+    sh:property [ sh:path cp:name ; sh:datatype xsd:string ; sh:minCount 1 ; sh:maxCount 1 ] ;
+    sh:property [ sh:path cp:hasPosition ; sh:class cp:Position ; sh:minCount 1 ; sh:maxCount 1 ] .

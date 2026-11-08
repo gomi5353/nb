@@ -1,12 +1,23 @@
 # OWL vocabulary for object position coverage verification.
 #
-# Read as: an ObjectPositionAxis has a Dataset and ObjectPositionAxisRequirements.
-# The Dataset has Episodes (each with an Index); each Episode has TaskObjects
-# (each with a Name and its initial Position: first recorded frame, env-local
-# frame, metres). A requirement names one TaskObject and an AreaConfiguration
-# whose CoverageGrid splits the area into Cells; every Cell needs at least
-# minEpisodesPerCell episodes whose initial position of that object falls
-# inside it. Requirement and episode objects are matched by name.
+# Read as: a Dataset has GeneralizationAxes (the axes it is checked against) and
+# Episodes. An ObjectPositionAxis has ObjectPositionAxisRequirements. Each
+# Episode has TaskObjects (each with a name and its initial Position: first
+# recorded frame, env-local frame, metres). A requirement names one TaskObject
+# and an AreaConfiguration whose CoverageGrid splits the area into Cells; every
+# Cell needs at least minEpisodesPerCell episodes of the dataset whose initial
+# position of that object falls inside it. Requirement and episode objects are
+# matched by name.
+#
+# A Rollout is one policy evaluation. It has the Dataset the policy was trained
+# on and Runs: one per rollout episode, with its status and the initial
+# positions of the task objects. Runs are placed into the cells of the training
+# dataset's requirement grids. Run and Episode are disjoint: a run never counts
+# as dataset coverage.
+#
+# Each class is described by restrictions on what its members have (rdfs:subClassOf
+# owl:Restriction), not by property domains and ranges. The verifier checks them
+# as closed-world constraints with SHACL (shapes/*.ttl).
 
 @prefix cp:      <http://taica.course/cp/ontology#> .
 @prefix owl:     <http://www.w3.org/2002/07/owl#> .
@@ -17,174 +28,224 @@
 
 <http://taica.course/cp/ontology> a owl:Ontology ;
     dcterms:title "Course project object position coverage ontology"@en ;
-    owl:versionIRI <http://taica.course/cp/ontology/2.0.0> ;
+    owl:versionIRI <http://taica.course/cp/ontology/3.0.0> ;
     vann:preferredNamespacePrefix "cp" ;
     vann:preferredNamespaceUri "http://taica.course/cp/ontology#" .
 
 # ---- Classes ----------------------------------------------------------------
 
-cp:GeneralizationAxis a owl:Class ;
-    rdfs:label "Generalization Axis"@en ;
-    rdfs:comment "A dimension along which a robot manipulation system is expected to generalize."@en .
-
-cp:ObjectPositionAxis a owl:Class ;
-    rdfs:subClassOf cp:GeneralizationAxis ;
-    rdfs:label "Object Position Axis"@en ;
-    rdfs:comment "A generalization axis concerned with variations in object positions."@en .
-
-cp:AxisRequirement a owl:Class ;
-    rdfs:label "Axis Requirement"@en ;
-    rdfs:comment "A coverage requirement along one generalization axis. Each axis subclasses it with its own requirement class."@en .
-
-cp:ObjectPositionAxisRequirement a owl:Class ;
-    rdfs:subClassOf cp:AxisRequirement ;
-    rdfs:label "Object Position Axis Requirement"@en ;
-    rdfs:comment "A coverage requirement specifying the task object, the object-position area and the required episode coverage."@en .
-
 cp:Dataset a owl:Class ;
+    rdfs:subClassOf
+        [ a owl:Restriction ; owl:onProperty cp:hasGeneralizationAxis ; owl:someValuesFrom cp:GeneralizationAxis ] ,
+        [ a owl:Restriction ; owl:onProperty cp:hasGeneralizationAxis ; owl:allValuesFrom cp:GeneralizationAxis ] ,
+        [ a owl:Restriction ; owl:onProperty cp:hasEpisode ; owl:someValuesFrom cp:Episode ] ,
+        [ a owl:Restriction ; owl:onProperty cp:hasEpisode ; owl:allValuesFrom cp:Episode ] ;
     rdfs:label "Dataset"@en ;
-    rdfs:comment "A collection of recorded robot-learning episodes (a LeRobot dataset under verification)."@en .
+    rdfs:comment "A LeRobot dataset under verification. It has the generalization axes it is checked against and its recorded episodes; verification starts here."@en .
+
+cp:Rollout a owl:Class ;
+    rdfs:subClassOf
+        [ a owl:Restriction ; owl:onProperty cp:hasDataset ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onClass cp:Dataset ] ,
+        [ a owl:Restriction ; owl:onProperty cp:hasRun ; owl:someValuesFrom [
+            owl:intersectionOf ( cp:Run [ a owl:Restriction ; owl:onProperty cp:status ;
+                                          owl:someValuesFrom [ a rdfs:Datatype ; owl:oneOf ( "succeeded" "failed" ) ] ] ) ] ] ,
+        [ a owl:Restriction ; owl:onProperty cp:hasRun ; owl:allValuesFrom cp:Run ] ,
+        [ a owl:Restriction ; owl:onProperty cp:successEpisodes ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onDataRange xsd:nonNegativeInteger ] ,
+        [ a owl:Restriction ; owl:onProperty cp:totalEpisodes ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onDataRange xsd:nonNegativeInteger ] ;
+    rdfs:label "Rollout"@en ;
+    rdfs:comment "One policy evaluation (scripts/rollout.py). It has the dataset the policy was trained on, its runs, and how many runs succeeded out of how many finished; the rollout comparison starts here."@en .
 
 cp:Episode a owl:Class ;
+    rdfs:subClassOf
+        [ a owl:Restriction ; owl:onProperty cp:index ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onDataRange xsd:nonNegativeInteger ] ,
+        [ a owl:Restriction ; owl:onProperty cp:hasTaskObject ; owl:allValuesFrom cp:TaskObject ] ;
     rdfs:label "Episode"@en ;
-    rdfs:comment "A recorded execution or demonstration belonging to a dataset."@en .
+    rdfs:comment "One recorded demonstration of a dataset, identified by its LeRobot episode_index. Every episode of a dataset counts toward coverage (the repo recorder saves successful episodes only), so an episode has no status."@en .
 
-cp:Index a owl:Class ;
-    rdfs:label "Index"@en ;
-    rdfs:comment "An integer index. For an Episode: its LeRobot episode_index. For a Cell: the row-major cell number k = j * numCellW + i, with column i along X from areaXMin and row j along Y from areaYMin."@en .
+cp:Run a owl:Class ;
+    rdfs:subClassOf
+        [ a owl:Restriction ; owl:onProperty cp:index ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onDataRange xsd:nonNegativeInteger ] ,
+        [ a owl:Restriction ; owl:onProperty cp:hasTaskObject ; owl:allValuesFrom cp:TaskObject ] ,
+        [ a owl:Restriction ; owl:onProperty cp:status ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onDataRange [ a rdfs:Datatype ; owl:oneOf ( "succeeded" "failed" "aborted" ) ] ] ;
+    rdfs:label "Run"@en ;
+    rdfs:comment "One episode of a rollout, identified by its number within the rollout. It has exactly one status: succeeded, failed, or aborted (manual reset, app closed). Finished runs (succeeded or failed) have the initial position of every task object; aborted runs are kept but not counted."@en .
 
 cp:TaskObject a owl:Class ;
+    rdfs:subClassOf
+        [ a owl:Restriction ; owl:onProperty cp:name ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onDataRange xsd:string ] ,
+        [ a owl:Restriction ; owl:onProperty cp:hasPosition ; owl:maxQualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onClass cp:Position ] ;
     rdfs:label "Task Object"@en ;
-    rdfs:comment "An object relevant to the task and whose position is tracked. Pointed to by a requirement (the object to check) and by each Episode (the object in that episode, with its initial position)."@en .
-
-cp:Name a owl:Class ;
-    rdfs:label "Name"@en ;
-    rdfs:comment "The name of a task object: its IsaacLab scene name, as in the dataset column object_position.<name>."@en .
+    rdfs:comment "An object relevant to the task, identified by its IsaacLab scene name, as in the dataset column object_position.<name>. In an episode or a run it has its initial position; in a requirement it has none."@en .
 
 cp:Position a owl:Class ;
+    rdfs:subClassOf
+        [ a owl:Restriction ; owl:onProperty cp:positionX ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onDataRange xsd:decimal ] ,
+        [ a owl:Restriction ; owl:onProperty cp:positionY ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onDataRange xsd:decimal ] ,
+        [ a owl:Restriction ; owl:onProperty cp:positionZ ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onDataRange xsd:decimal ] ;
     rdfs:label "Position"@en ;
-    rdfs:comment "A spatial position represented in the coordinate frame selected by the dataset or task configuration (env-local frame, metres)."@en .
+    rdfs:comment "An initial (first-frame) position in the env-local frame, metres, rounded to 6 decimal places."@en .
+
+cp:GeneralizationAxis a owl:Class ;
+    rdfs:subClassOf
+        [ a owl:Restriction ; owl:onProperty cp:hasRequirement ; owl:someValuesFrom cp:AxisRequirement ] ,
+        [ a owl:Restriction ; owl:onProperty cp:hasRequirement ; owl:allValuesFrom cp:AxisRequirement ] ;
+    rdfs:label "Generalization Axis"@en ;
+    rdfs:comment "A dimension along which the policy is expected to generalize. It groups the requirements along that dimension. Each axis subclasses it."@en .
+
+cp:ObjectPositionAxis a owl:Class ;
+    rdfs:subClassOf
+        cp:GeneralizationAxis ,
+        [ a owl:Restriction ; owl:onProperty cp:hasRequirement ; owl:allValuesFrom cp:ObjectPositionAxisRequirement ] ;
+    rdfs:label "Object Position Axis"@en ;
+    rdfs:comment "The axis of object initial positions. Its requirements are object position requirements."@en .
+
+cp:AxisRequirement a owl:Class ;
+    rdfs:subClassOf
+        [ a owl:Restriction ; owl:onProperty [ owl:inverseOf cp:hasRequirement ] ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onClass cp:GeneralizationAxis ] ;
+    rdfs:label "Axis Requirement"@en ;
+    rdfs:comment "A coverage requirement along one generalization axis, written by the student. Each axis subclasses it with its own requirement class."@en .
+
+cp:ObjectPositionAxisRequirement a owl:Class ;
+    rdfs:subClassOf
+        cp:AxisRequirement ,
+        [ a owl:Restriction ; owl:onProperty cp:hasTaskObject ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onClass cp:TaskObject ] ,
+        [ a owl:Restriction ; owl:onProperty cp:hasAreaConfiguration ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onClass cp:AreaConfiguration ] ,
+        [ a owl:Restriction ; owl:onProperty cp:minEpisodesPerCell ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onDataRange xsd:positiveInteger ] ;
+    rdfs:label "Object Position Axis Requirement"@en ;
+    rdfs:comment "One task object, one area with a grid, and the minimum number of dataset episodes per cell."@en .
 
 cp:AreaConfiguration a owl:Class ;
+    rdfs:subClassOf
+        [ a owl:Restriction ; owl:onProperty cp:areaXMin ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onDataRange xsd:decimal ] ,
+        [ a owl:Restriction ; owl:onProperty cp:areaXMax ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onDataRange xsd:decimal ] ,
+        [ a owl:Restriction ; owl:onProperty cp:areaYMin ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onDataRange xsd:decimal ] ,
+        [ a owl:Restriction ; owl:onProperty cp:areaYMax ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onDataRange xsd:decimal ] ,
+        [ a owl:Restriction ; owl:onProperty cp:hasCoverageGrid ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onClass cp:CoverageGrid ] ,
+        [ a owl:Restriction ; owl:onProperty [ owl:inverseOf cp:hasAreaConfiguration ] ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onClass cp:ObjectPositionAxisRequirement ] ;
     rdfs:label "Area Configuration"@en ;
-    rdfs:comment "The whole rectangular area in which object positions are considered for coverage."@en .
+    rdfs:comment "An axis-aligned rectangle on the table plane, split by one coverage grid."@en .
 
 cp:CoverageGrid a owl:Class ;
+    rdfs:subClassOf
+        [ a owl:Restriction ; owl:onProperty cp:numCellW ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onDataRange xsd:positiveInteger ] ,
+        [ a owl:Restriction ; owl:onProperty cp:numCellH ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onDataRange xsd:positiveInteger ] ,
+        [ a owl:Restriction ; owl:onProperty cp:hasCell ; owl:allValuesFrom cp:Cell ] ,
+        [ a owl:Restriction ; owl:onProperty [ owl:inverseOf cp:hasCoverageGrid ] ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onClass cp:AreaConfiguration ] ;
     rdfs:label "Coverage Grid"@en ;
-    rdfs:comment "A rectangular grid that partitions an area configuration into cells. A grid with numCellW columns and numCellH rows contains numCellW * numCellH cells; checked with SHACL."@en .
+    rdfs:comment "A partition of an area into numCellW columns and numCellH rows, with one cell per column and row (checked with SHACL)."@en .
 
 cp:Cell a owl:Class ;
+    rdfs:subClassOf
+        [ a owl:Restriction ; owl:onProperty cp:index ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onDataRange xsd:nonNegativeInteger ] ,
+        [ a owl:Restriction ; owl:onProperty [ owl:inverseOf cp:hasCell ] ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onClass cp:CoverageGrid ] ;
     rdfs:label "Coverage Cell"@en ;
-    rdfs:comment "One subregion of the whole rectangular area, identified by its Index. Its bounds follow from the area, the grid and the index. The minimum episode count is minEpisodesPerCell on the associated requirement and applies to every cell. Generated by the verifier."@en .
+    rdfs:comment "One grid cell, identified by its row-major index k = j * numCellW + i, with column i along X from areaXMin and row j along Y from areaYMin. Its bounds follow from the area, the grid and the index. Generated by the verifier."@en .
+
+[] a owl:AllDisjointClasses ;
+    owl:members ( cp:Dataset cp:Rollout cp:Episode cp:Run cp:TaskObject cp:Position
+                  cp:GeneralizationAxis cp:AxisRequirement cp:AreaConfiguration cp:CoverageGrid cp:Cell ) .
 
 # ---- Object properties --------------------------------------------------------
 
-cp:hasDataset a owl:ObjectProperty ;
-    rdfs:domain cp:GeneralizationAxis ;
-    rdfs:range cp:Dataset ;
-    rdfs:label "has dataset"@en .
+cp:hasGeneralizationAxis a owl:ObjectProperty ;
+    rdfs:label "has generalization axis"@en ;
+    rdfs:comment "A dataset has the axes it is checked against."@en .
 
 cp:hasRequirement a owl:ObjectProperty ;
-    rdfs:domain cp:GeneralizationAxis ;
-    rdfs:range cp:AxisRequirement ;
     rdfs:label "has requirement"@en .
 
+cp:hasDataset a owl:ObjectProperty ;
+    rdfs:label "has dataset"@en ;
+    rdfs:comment "A rollout has the dataset its policy was trained on."@en .
+
 cp:hasEpisode a owl:ObjectProperty ;
-    rdfs:domain cp:Dataset ;
-    rdfs:range cp:Episode ;
     rdfs:label "has episode"@en .
 
-cp:hasIndex a owl:ObjectProperty ;
-    rdfs:domain [ a owl:Class ; owl:unionOf ( cp:Episode cp:Cell ) ] ;
-    rdfs:range cp:Index ;
-    rdfs:label "has index"@en .
+cp:hasRun a owl:ObjectProperty ;
+    rdfs:label "has run"@en .
 
 cp:hasTaskObject a owl:ObjectProperty ;
-    rdfs:domain [ a owl:Class ; owl:unionOf ( cp:Episode cp:ObjectPositionAxisRequirement ) ] ;
-    rdfs:range cp:TaskObject ;
     rdfs:label "has task object"@en .
 
-cp:hasName a owl:ObjectProperty ;
-    rdfs:domain cp:TaskObject ;
-    rdfs:range cp:Name ;
-    rdfs:label "has name"@en .
-
 cp:hasPosition a owl:ObjectProperty ;
-    rdfs:domain cp:TaskObject ;
-    rdfs:range cp:Position ;
     rdfs:label "has position"@en .
 
 cp:hasAreaConfiguration a owl:ObjectProperty ;
-    rdfs:domain cp:ObjectPositionAxisRequirement ;
-    rdfs:range cp:AreaConfiguration ;
     rdfs:label "has area configuration"@en .
 
 cp:hasCoverageGrid a owl:ObjectProperty ;
-    rdfs:domain cp:AreaConfiguration ;
-    rdfs:range cp:CoverageGrid ;
     rdfs:label "has coverage grid"@en .
 
 cp:hasCell a owl:ObjectProperty ;
-    rdfs:domain cp:CoverageGrid ;
-    rdfs:range cp:Cell ;
     rdfs:label "has cell"@en .
 
 # ---- Datatype properties ------------------------------------------------------
 
-cp:indexValue a owl:DatatypeProperty ;
-    rdfs:domain cp:Index ;
-    rdfs:range xsd:nonNegativeInteger ;
-    rdfs:label "index value"@en .
-
-cp:nameValue a owl:DatatypeProperty ;
-    rdfs:domain cp:Name ;
+cp:name a owl:DatatypeProperty ;
     rdfs:range xsd:string ;
-    rdfs:label "name value"@en .
+    rdfs:label "name"@en ;
+    rdfs:comment "The IsaacLab scene name of a task object."@en .
+
+cp:index a owl:DatatypeProperty ;
+    rdfs:range xsd:nonNegativeInteger ;
+    rdfs:label "index"@en ;
+    rdfs:comment "The episode_index of an episode, the number of a run within its rollout, or the row-major number of a cell."@en .
+
+cp:status a owl:DatatypeProperty ;
+    rdfs:range [ a rdfs:Datatype ; owl:oneOf ( "succeeded" "failed" "aborted" ) ] ;
+    rdfs:label "status"@en ;
+    rdfs:comment "How a run ended, as written in the rollout log."@en .
 
 cp:positionX a owl:DatatypeProperty ;
-    rdfs:domain cp:Position ;
     rdfs:range xsd:decimal ;
     rdfs:label "position X"@en .
 
 cp:positionY a owl:DatatypeProperty ;
-    rdfs:domain cp:Position ;
     rdfs:range xsd:decimal ;
     rdfs:label "position Y"@en .
 
+cp:positionZ a owl:DatatypeProperty ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "position Z"@en ;
+    rdfs:comment "Height above the env origin. Recorded and stored, not used by the object-position coverage rule."@en .
+
 cp:minEpisodesPerCell a owl:DatatypeProperty ;
-    rdfs:domain cp:ObjectPositionAxisRequirement ;
-    rdfs:range xsd:nonNegativeInteger ;
+    rdfs:range xsd:positiveInteger ;
     rdfs:label "minimum episodes per cell"@en ;
-    rdfs:comment "The minimum number of episodes required to cover each cell in the grid."@en .
+    rdfs:comment "The minimum number of dataset episodes required in each cell of the grid."@en .
 
 cp:areaXMin a owl:DatatypeProperty ;
-    rdfs:domain cp:AreaConfiguration ;
     rdfs:range xsd:decimal ;
     rdfs:label "area X minimum"@en .
 
 cp:areaXMax a owl:DatatypeProperty ;
-    rdfs:domain cp:AreaConfiguration ;
     rdfs:range xsd:decimal ;
     rdfs:label "area X maximum"@en .
 
 cp:areaYMin a owl:DatatypeProperty ;
-    rdfs:domain cp:AreaConfiguration ;
     rdfs:range xsd:decimal ;
     rdfs:label "area Y minimum"@en .
 
 cp:areaYMax a owl:DatatypeProperty ;
-    rdfs:domain cp:AreaConfiguration ;
     rdfs:range xsd:decimal ;
     rdfs:label "area Y maximum"@en .
 
 cp:numCellW a owl:DatatypeProperty ;
-    rdfs:domain cp:CoverageGrid ;
     rdfs:range xsd:positiveInteger ;
     rdfs:label "number of cells in width"@en ;
     rdfs:comment "The number of grid divisions along the width (X direction)."@en .
 
 cp:numCellH a owl:DatatypeProperty ;
-    rdfs:domain cp:CoverageGrid ;
     rdfs:range xsd:positiveInteger ;
     rdfs:label "number of cells in height"@en ;
     rdfs:comment "The number of grid divisions along the height (Y direction)."@en .
+
+cp:successEpisodes a owl:DatatypeProperty ;
+    rdfs:range xsd:nonNegativeInteger ;
+    rdfs:label "success episodes"@en ;
+    rdfs:comment "The number of succeeded runs of a rollout."@en .
+
+cp:totalEpisodes a owl:DatatypeProperty ;
+    rdfs:range xsd:nonNegativeInteger ;
+    rdfs:label "total episodes"@en ;
+    rdfs:comment "The number of finished (succeeded or failed) runs of a rollout; aborted runs are not counted."@en .

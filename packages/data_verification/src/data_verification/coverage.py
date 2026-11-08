@@ -2,53 +2,30 @@
 
 from __future__ import annotations
 
+import math
 from collections import Counter
 from dataclasses import asdict, dataclass, field
+from decimal import Decimal
 from importlib.resources import files
 from pathlib import Path
 
 from pyshacl import validate
-from rdflib import RDF, XSD, Graph, Namespace
+from rdflib import RDF, Graph, Namespace, URIRef
 
 from .dataset import DatasetError, read_initial_placements
-from .graph import CP, add_dataset, expand_cells
-from .spec_template import todo_fields, value_type_errors
+from .graph import CP, add_dataset, dataset_iri, expand_cells
+from .spec_template import todo_fields, value_range_errors, value_type_errors
 
 SH = Namespace("http://www.w3.org/ns/shacl#")
 
-# Same cell bounds and membership rule as cp:CellShape, without the HAVING filter.
-_CELL_COUNTS_QUERY = """
-SELECT ?req ?k (COUNT(DISTINCT ?episode) AS ?n) WHERE {
-    ?cell a cp:Cell ; cp:hasIndex ?index .
-    ?index cp:indexValue ?k .
-    ?grid cp:hasCell ?cell ; cp:numCellW ?nw ; cp:numCellH ?nh .
-    ?area cp:hasCoverageGrid ?grid ;
-          cp:areaXMin ?ax0 ; cp:areaXMax ?ax1 ; cp:areaYMin ?ay0 ; cp:areaYMax ?ay1 .
-    ?req cp:hasAreaConfiguration ?area ; cp:hasTaskObject ?reqObj .
-    ?reqObj cp:hasName ?reqName . ?reqName cp:nameValue ?name .
-    BIND (xsd:integer(FLOOR(?k / ?nw)) AS ?j)
-    BIND (?k - ?nw * ?j AS ?i)
-    BIND (?ax0 + ?i * (?ax1 - ?ax0) / ?nw AS ?x0)
-    BIND (IF(?i = ?nw - 1, ?ax1, ?ax0 + (?i + 1) * (?ax1 - ?ax0) / ?nw) AS ?x1)
-    BIND (?ay0 + ?j * (?ay1 - ?ay0) / ?nh AS ?y0)
-    BIND (IF(?j = ?nh - 1, ?ay1, ?ay0 + (?j + 1) * (?ay1 - ?ay0) / ?nh) AS ?y1)
-    OPTIONAL {
-        ?episode a cp:Episode ; cp:hasTaskObject ?obj .
-        ?obj cp:hasName ?objName ; cp:hasPosition ?p .
-        ?objName cp:nameValue ?name .
-        ?p cp:positionX ?x ; cp:positionY ?y .
-        FILTER (?x >= ?x0 && (?x < ?x1 || (?i = ?nw - 1 && ?x = ?x1)) &&
-                ?y >= ?y0 && (?y < ?y1 || (?j = ?nh - 1 && ?y = ?y1)))
-    }
-}
-GROUP BY ?req ?k
-"""
-
+# The requirements of ?dataset (bound by the caller), through its axes.
 _REQUIREMENTS_QUERY = """
 SELECT ?req ?name ?x0 ?x1 ?y0 ?y1 ?nx ?ny ?min WHERE {
+    ?dataset cp:hasGeneralizationAxis ?axis .
+    ?axis cp:hasRequirement ?req .
     ?req a cp:ObjectPositionAxisRequirement ; cp:hasTaskObject ?reqObj ;
          cp:minEpisodesPerCell ?min ; cp:hasAreaConfiguration ?area .
-    ?reqObj cp:hasName ?reqName . ?reqName cp:nameValue ?name .
+    ?reqObj cp:name ?name .
     ?area cp:areaXMin ?x0 ; cp:areaXMax ?x1 ; cp:areaYMin ?y0 ; cp:areaYMax ?y1 ;
           cp:hasCoverageGrid ?grid .
     ?grid cp:numCellW ?nx ; cp:numCellH ?ny .
@@ -58,7 +35,7 @@ SELECT ?req ?name ?x0 ?x1 ?y0 ?y1 ?nx ?ny ?min WHERE {
 _REQUIRED_NAMES_QUERY = """
 SELECT DISTINCT ?name WHERE {
     ?req a cp:ObjectPositionAxisRequirement ; cp:hasTaskObject ?reqObj .
-    ?reqObj cp:hasName ?reqName . ?reqName cp:nameValue ?name .
+    ?reqObj cp:name ?name .
 }
 """
 
@@ -126,6 +103,7 @@ def _packaged_graph(*parts: str) -> Graph:
 
 
 def build_verification_graph(dataset_root: str | Path, spec: str | Path) -> tuple[Graph, CoverageReport]:
+    """Spec, cells and the dataset with its episodes; the dataset node is ``dataset_iri(<dataset dir name>)``."""
     root = Path(dataset_root)
     report = CoverageReport(dataset=str(root), spec=str(spec))
     graph = Graph()
@@ -142,9 +120,9 @@ def build_verification_graph(dataset_root: str | Path, spec: str | Path) -> tupl
     if todo:
         report.errors.append("Spec still has TODO values: " + ", ".join(todo))
         return graph, report
-    type_errors = value_type_errors(graph)
-    if type_errors:
-        report.errors.extend(type_errors)
+    value_errors = value_type_errors(graph) or value_range_errors(graph)
+    if value_errors:
+        report.errors.extend(value_errors)
         return graph, report
     if not any(graph.subjects(RDF.type, CP.ObjectPositionAxisRequirement)):
         report.errors.append("Spec declares no cp:ObjectPositionAxisRequirement; nothing to check")
@@ -192,7 +170,7 @@ def verify_object_position_coverage(
     if graph_out is not None:  # also when empty, so an old file never looks current
         Path(graph_out).parent.mkdir(parents=True, exist_ok=True)
         graph.serialize(destination=Path(graph_out), format="turtle")
-    if len(graph) == 0 or todo_fields(graph) or value_type_errors(graph):
+    if len(graph) == 0 or todo_fields(graph) or value_type_errors(graph) or value_range_errors(graph):
         return report  # spec missing or not filled in; SHACL would only add noise
 
     shapes = _packaged_graph("shapes", "object_position_coverage.ttl")
@@ -214,25 +192,76 @@ def verify_object_position_coverage(
         severity = str(results_graph.value(result, SH.resultSeverity)).rsplit("#", 1)[-1]
         message = str(results_graph.value(result, SH.resultMessage) or "")
         path = results_graph.value(result, SH.resultPath)
-        if path is not None and not message.startswith("'"):
+        if isinstance(path, URIRef) and not message.startswith("'"):  # not for inverse paths
             message = f"{path.n3(graph.namespace_manager)}: {message}"
         grouped.setdefault((severity, message), []).append(str(results_graph.value(result, SH.focusNode)))
     for (severity, message), nodes in sorted(grouped.items()):
         finding = Finding(severity, message, sorted(nodes))
         (report.violations if severity == "Violation" else report.warnings).append(finding)
 
-    report.coverage = _coverage_tables(graph)
+    report.coverage = _coverage_tables(graph, dataset_iri(Path(dataset_root).resolve().name))
     return report
 
 
-def _coverage_tables(graph: Graph) -> list[ObjectCoverage]:
+def cell_counts(graph: Graph, dataset: URIRef) -> dict[str, Counter]:
+    """Requirement IRI -> Counter of ``dataset``'s episodes per cell index.
+
+    Same cell bounds and membership rule as cp:DatasetCoverageShape, counted in
+    Python: the SPARQL form takes tens of seconds on a 100-episode dataset.
+    """
+    positions: dict[str, list[tuple[Decimal, Decimal]]] = {}
+    for episode in graph.objects(dataset, CP.hasEpisode):
+        for obj in graph.objects(episode, CP.hasTaskObject):
+            p = graph.value(obj, CP.hasPosition)
+            x, y = graph.value(p, CP.positionX), graph.value(p, CP.positionY)
+            if x is not None and y is not None:
+                positions.setdefault(str(graph.value(obj, CP.name)), []).append((_dec(x), _dec(y)))
     counts: dict[str, Counter] = {}
-    for row in graph.query(_CELL_COUNTS_QUERY, initNs={"cp": CP, "xsd": XSD}):
-        counts.setdefault(str(row.req), Counter())[int(row.k)] = int(row.n)
+    for row in requirement_rows(graph, dataset):
+        x0, x1, y0, y1 = (_dec(v) for v in (row.x0, row.x1, row.y0, row.y1))
+        nw, nh = int(row.nx), int(row.ny)
+        counter = counts.setdefault(str(row.req), Counter())
+        if not (x0 < x1 and y0 < y1 and nw >= 1 and nh >= 1):
+            continue
+        for x, y in positions.get(str(row.name), []):
+            i, j = lattice_index(x, x0, x1, nw), lattice_index(y, y0, y1, nh)
+            if 0 <= i < nw and 0 <= j < nh:
+                counter[j * nw + i] += 1
+    return counts
+
+
+def cell_edge(lo: Decimal, hi: Decimal, n: int, i: int) -> Decimal:
+    """The i-th cell edge of [lo, hi] split into n, as cp:DatasetCoverageShape computes it; edge n is exactly hi."""
+    return hi if i == n else lo + i * (hi - lo) / n
+
+
+def lattice_index(v: Decimal, lo: Decimal, hi: Decimal, n: int) -> int:
+    """Index i of the interval [edge i, edge i+1) holding v, extended beyond [lo, hi]; hi belongs to cell n - 1."""
+    if v == hi:
+        return n - 1
+    i = math.floor((v - lo) * n / (hi - lo))
+    while v < cell_edge(lo, hi, n, i):  # guard against rounding at an edge
+        i -= 1
+    while v >= cell_edge(lo, hi, n, i + 1):
+        i += 1
+    return i
+
+
+def _dec(literal) -> Decimal:
+    return Decimal(str(literal.toPython()))
+
+
+def requirement_rows(graph: Graph, dataset: URIRef):
+    """One row per object position requirement of ``dataset``: req, name, area bounds, nx, ny, min."""
+    return graph.query(_REQUIREMENTS_QUERY, initNs={"cp": CP}, initBindings={"dataset": dataset})
+
+
+def _coverage_tables(graph: Graph, dataset: URIRef) -> list[ObjectCoverage]:
+    counts = cell_counts(graph, dataset)
     tables = []
-    for row in graph.query(_REQUIREMENTS_QUERY, initNs={"cp": CP}):
+    for row in requirement_rows(graph, dataset):
         nx, ny = int(row.nx), int(row.ny)
-        cell_counts = counts.get(str(row.req), Counter())
+        req_counts = counts.get(str(row.req), Counter())
         tables.append(
             ObjectCoverage(
                 object_name=str(row.name),
@@ -240,7 +269,7 @@ def _coverage_tables(graph: Graph) -> list[ObjectCoverage]:
                 y_range=(float(row.y0), float(row.y1)),
                 min_episodes_per_cell=int(row.min),
                 # Cell index is row-major: k = j * nx + i.
-                counts=[[cell_counts[j * nx + i] for i in range(nx)] for j in range(ny)],
+                counts=[[req_counts[j * nx + i] for i in range(nx)] for j in range(ny)],
             )
         )
     return sorted(tables, key=lambda t: t.object_name)

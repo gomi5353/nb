@@ -178,7 +178,10 @@ class SingleArmFrankaTaskEnvCfg(ManagerBasedRLEnvCfg):
     default_feature_joint_names: list[str] = MISSING
     task_description: str = MISSING
     tracked_object_names: list[str] = []
-    """Rigid objects recorded as ``object_position.<name>`` dataset columns for data verification."""
+    """Randomized rigid objects, recorded as ``object_position.<name>`` dataset columns for data verification."""
+    fixed_object_names: list[str] = []
+    """Rigid objects that start at the same pose in every episode. They get no dataset column and are not
+    verified; ``scripts/rollout.py`` logs their start position under ``fixed_objects`` for reference."""
 
     def __post_init__(self) -> None:
         super().__post_init__()
