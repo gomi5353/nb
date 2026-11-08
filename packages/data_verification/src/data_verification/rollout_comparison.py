@@ -495,13 +495,15 @@ def _object_lines(obj: ObjectComparison) -> list[str]:
     lines = [
         f"[{obj.object_name}] your area x={x0:.3f}..{x1:.3f} y={y0:.3f}..{y1:.3f}, "
         f"cell {obj.cell_size[0]:.4g} x {obj.cell_size[1]:.4g}, {nw}x{nh} cells, >= {obj.min_episodes} episodes each",
-        "  successes/runs per cell; ! = runs started in a cell with too few dataset episodes, - = no runs",
     ]
-    texts = [[("-" if not c.sampled else f"{c.successes}/{c.runs}") + ("" if c.covered or not c.sampled else "!") for c in row] for row in obj.cells]
-    width = max(4, *(len(t) for row in texts for t in row))
-    for j in reversed(range(nh)):  # +y at the top
-        lines.append(f"  y{j:<2} " + " ".join(f"{t:>{width}}" for t in texts[j]))
-    lines.append("       " + " ".join(f"{'x' + str(i):>{width}}" for i in range(nw)))
+    data = [[f"{c.episodes}:{c.runs}" + ("!" if c.sampled and not c.covered else "") for c in row] for row in obj.cells]
+    results = [["-" if not c.sampled else f"{c.successes}/{c.runs}" for c in row] for row in obj.cells]
+    lines.append(
+        f"  dataset episodes : rollout runs per cell (! = runs started where the dataset has fewer than {obj.min_episodes} episodes)"
+    )
+    lines += _grid_lines(data)
+    lines.append("  rollout successes / runs per cell (- = no runs)")
+    lines += _grid_lines(results)
     if obj.outside:
         lines.append(f"  {obj.runs_outside} run(s) started outside your area, in {len(obj.outside)} cell(s) of the same size")
     not_covered = obj.runs - obj.runs_covered
@@ -511,6 +513,14 @@ def _object_lines(obj: ObjectComparison) -> list[str]:
         f"{_rate(obj.successes_not_covered, not_covered)} not covered"
     )
     lines.append("")
+    return lines
+
+
+def _grid_lines(texts: list[list[str]]) -> list[str]:
+    """Rows of ``texts`` (row j = y index) with +y at the top, as in ``check``."""
+    width = max(4, *(len(t) for row in texts for t in row)) + 1
+    lines = [f"  y{j:<2} " + " ".join(f"{t:>{width}}" for t in texts[j]) for j in reversed(range(len(texts)))]
+    lines.append("       " + " ".join(f"{'x' + str(i):>{width}}" for i in range(len(texts[0]))))
     return lines
 
 

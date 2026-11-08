@@ -477,19 +477,27 @@ Rollout : outputs/rollout/20261103-142530.jsonl  (eval/cup_stacking_eval.py, see
 Runs    : 20 finished, 8 succeeded
 
 [blue_cup] your area x=8.800..9.000 y=6.400..6.600, cell 0.1 x 0.1, 2x2 cells, >= 3 episodes each
-  successes/runs per cell; ! = runs started in a cell with too few dataset episodes, - = no runs
-  y1     - 1/5!
-  y0   4/5    -
-         x0   x1
+  dataset episodes : rollout runs per cell (! = runs started where the dataset has fewer than 3 episodes)
+  y1    3:0  1:5!
+  y0    5:5   3:0
+          x0    x1
+  rollout successes / runs per cell (- = no runs)
+  y1      -   1/5
+  y0    4/5     -
+          x0    x1
   10 run(s) started outside your area, in 2 cell(s) of the same size
   covered: 1/4 sampled cells, 5/20 runs (25%)
   success: 4/5 covered vs 4/15 not covered
 
 [pink_cup] your area x=9.000..9.200 y=6.380..6.580, cell 0.1 x 0.1, 2x2 cells, >= 3 episodes each
-  successes/runs per cell; ! = runs started in a cell with too few dataset episodes, - = no runs
-  y1   2/5  1/5
-  y0   4/5  1/5
-         x0   x1
+  dataset episodes : rollout runs per cell (! = runs started where the dataset has fewer than 3 episodes)
+  y1    3:5   3:5
+  y0    3:5   3:5
+          x0    x1
+  rollout successes / runs per cell (- = no runs)
+  y1    2/5   1/5
+  y0    4/5   1/5
+          x0    x1
   covered: 4/4 sampled cells, 20/20 runs (100%)
   success: 8/20 covered vs 0/0 not covered
 
@@ -520,7 +528,8 @@ How to read it:
 |---|---|---|
 | **Runs** | Episodes of the rollout that ended with success or failure. Episodes stopped by a manual reset (`aborted`) are not counted. | The log has 20 episodes, none aborted; 8 succeeded. |
 | **Header** `[blue_cup] your area … cell … NxM cells` | The group's area and grid for the object, from the specification. | Cell size (9.0 − 8.8) / 2 = 0.1 by (6.6 − 6.4) / 2 = 0.1. |
-| **Grid** | `successes/runs` of the runs that started in each cell of the group's grid, +y at the top as in `check`. `!` = the cell has runs but fewer than `minEpisodesPerCell` dataset episodes; `-` = no runs (not judged). | `4/5` (x0, y0): 5 runs started in x 8.8–8.9, y 6.4–6.5, 4 succeeded; the cell has 5 episodes: covered. `1/5!` (x1, y1) has only 1 episode: not covered. |
+| **Dataset grid** `episodes:runs` | Per cell of the group's grid, +y at the top as in `check`: the dataset episodes that started there, then the rollout runs that started there. `!` = the cell has runs but fewer than `minEpisodesPerCell` episodes, so those runs are not covered. Outcomes are not in this grid. | `5:5` (x0, y0): 5 episodes, 5 runs: covered. `1:5!` (x1, y1): 1 episode, minimum 3, 5 runs: not covered. `3:0` (x0, y1): enough episodes, no runs, so not judged. |
+| **Outcome grid** `successes/runs` | Per cell: how many of the runs that started there succeeded. `-` = no runs. Says nothing about the dataset; read it next to the dataset grid. | `4/5` (x0, y0): 4 of the 5 runs succeeded. `1/5` (x1, y1): 1 of 5 succeeded, in the cell the dataset grid marks thin. |
 | **outside your area** | Runs that started outside the area, and how many cells of the grid's size they fall into. They are not covered. | 10 runs started at y 6.38–6.4, below `areaYMin` 6.4: in cells (0, −1) and (1, −1). |
 | **covered** | Covered cells / cells with runs (outside cells included), and the runs in covered cells / all runs. | `blue_cup`: only (x0, y0) of the 4 sampled cells is covered, so 1/4 cells and 5/20 runs. `pink_cup`: 4/4 cells, 20/20 runs. |
 | **success** | Success rate of the covered runs compared with the other runs. | `blue_cup`: 4/5 vs 1 + 1 + 2 = 4 of 15. `pink_cup`: all 20 runs covered, so 8/20 vs 0/0. |
