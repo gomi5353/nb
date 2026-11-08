@@ -80,7 +80,8 @@ cp:TaskObject a owl:Class ;
 cp:Position a owl:Class ;
     rdfs:subClassOf
         [ a owl:Restriction ; owl:onProperty cp:positionX ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onDataRange xsd:decimal ] ,
-        [ a owl:Restriction ; owl:onProperty cp:positionY ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onDataRange xsd:decimal ] ;
+        [ a owl:Restriction ; owl:onProperty cp:positionY ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onDataRange xsd:decimal ] ,
+        [ a owl:Restriction ; owl:onProperty cp:positionZ ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onDataRange xsd:decimal ] ;
     rdfs:label "Position"@en ;
     rdfs:comment "An initial (first-frame) position in the env-local frame, metres, rounded to 6 decimal places."@en .
 
@@ -202,6 +203,11 @@ cp:positionX a owl:DatatypeProperty ;
 cp:positionY a owl:DatatypeProperty ;
     rdfs:range xsd:decimal ;
     rdfs:label "position Y"@en .
+
+cp:positionZ a owl:DatatypeProperty ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "position Z"@en ;
+    rdfs:comment "Height above the env origin. Recorded and stored, not used by the object-position coverage rule."@en .
 
 cp:minEpisodesPerCell a owl:DatatypeProperty ;
     rdfs:range xsd:positiveInteger ;

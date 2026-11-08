@@ -321,7 +321,7 @@ once coverage is reached.
 **Background**
 
 - **Only x and y position.** Orientation is not recorded; height (z) is
-  recorded but not checked.
+  recorded and stored in the graph (`cp:positionZ`) but not checked.
 - **Each object separately.** Combinations ("blue cup left *while* pink cup
   right") and distances between objects are not checked.
 - **Only the first frame.** Trajectory quality, grasp success, and timing are
@@ -364,7 +364,7 @@ Dataset
 └┄ hasEpisode
     ▶ Episode (index = episode_index)
        └┄ hasTaskObject ▶ TaskObject (name)
-              └┄ hasPosition ▶ Position (positionX, positionY)
+              └┄ hasPosition ▶ Position (positionX, positionY, positionZ)
 ```
 
 - The dataset *has* the axes it is checked against; their requirements apply
@@ -376,7 +376,9 @@ Dataset
   row `j = ⌊k / numCellW⌋`. The rule computes the cell's bounds from the area
   and the grid. A position on an inner cell edge belongs to the upper cell;
   the area's upper edges belong to the last column and row.
-- Positions are stored as decimals rounded to 6 places (micrometres).
+- Every `Position` has `positionX`, `positionY` and `positionZ`, stored as
+  decimals rounded to 6 places (micrometres). The coverage rule uses x and y
+  only; z is there for inspection and for the group's own rules.
 
 What `check` does:
 
@@ -568,7 +570,7 @@ Rollout (successEpisodes, totalEpisodes)
     ▶ Run (index, status)         one rollout episode: succeeded, failed or aborted
        └┄ hasTaskObject
           ▶ TaskObject (name)
-              └┄ hasPosition ▶ Position (positionX, positionY)
+              └┄ hasPosition ▶ Position (positionX, positionY, positionZ)
 ```
 
 - `compare` builds the graph of `check` (specification and training dataset),

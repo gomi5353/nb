@@ -96,7 +96,8 @@ cp:TaskObjectShape a sh:NodeShape ;
 cp:PositionShape a sh:NodeShape ;
     sh:targetClass cp:Position ;
     sh:property [ sh:path cp:positionX ; sh:datatype xsd:decimal ; sh:minCount 1 ; sh:maxCount 1 ] ;
-    sh:property [ sh:path cp:positionY ; sh:datatype xsd:decimal ; sh:minCount 1 ; sh:maxCount 1 ] .
+    sh:property [ sh:path cp:positionY ; sh:datatype xsd:decimal ; sh:minCount 1 ; sh:maxCount 1 ] ;
+    sh:property [ sh:path cp:positionZ ; sh:datatype xsd:decimal ; sh:minCount 1 ; sh:maxCount 1 ] .
 
 # Severity is a property of the shape, so the area check gets its own shape.
 cp:DatasetAreaShape a sh:NodeShape ;

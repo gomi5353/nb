@@ -193,6 +193,24 @@ def test_log_rejects_duplicate_episodes(tmp_path: Path) -> None:
         read_rollout_log(log)
 
 
+def test_log_rejects_position_without_z(tmp_path: Path) -> None:
+    log = write_log(tmp_path / "episodes.jsonl", [(0.05, 0.05, "succeeded")])
+    log.write_text(log.read_text().replace("[0.05, 0.05, 0.9]", "[0.05, 0.05]"))
+    with pytest.raises(RolloutLogError, match=r"must be \[x, y, z\]"):
+        read_rollout_log(log)
+
+
+def test_positions_in_graph_have_x_y_z(tmp_path: Path, spec: Path) -> None:
+    graph_out = tmp_path / "graph.ttl"
+    run(tmp_path, spec, [(0.05, 0.05, "succeeded")], graph_out=graph_out)
+    graph = Graph().parse(graph_out)
+    positions = list(graph.subjects(RDF.type, CP.Position))
+    assert positions, "dataset episodes and runs have positions"
+    for p in positions:
+        assert all(graph.value(p, prop) is not None for prop in (CP.positionX, CP.positionY))
+        assert float(graph.value(p, CP.positionZ)) == 0.9
+
+
 def _module_constants(path: Path, prefix: str) -> dict[str, object]:
     tree = ast.parse(path.read_text())
     return {
@@ -296,7 +314,7 @@ def _rollout_errors(runs: list[tuple[int, str, list[str]]]) -> list[str]:
         for m, name in enumerate(names):
             turtle.append(
                 f'd:run{n} cp:hasTaskObject d:o{n}_{m} . d:o{n}_{m} a cp:TaskObject ; cp:name "{name}" ; '
-                f"cp:hasPosition [ a cp:Position ; cp:positionX 0.05 ; cp:positionY 0.05 ] ."
+                f"cp:hasPosition [ a cp:Position ; cp:positionX 0.05 ; cp:positionY 0.05 ; cp:positionZ 0.9 ] ."
             )
     graph = Graph().parse(data="\n".join(turtle), format="turtle")
     result = rollout_comparison.RolloutComparison(dataset="ds", spec="spec", rollout_log="r")

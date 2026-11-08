@@ -68,7 +68,7 @@ def add_dataset(graph: Graph, dataset_name: str, data: DatasetPlacements) -> URI
         if not placement.is_finite:
             continue
         episode = URIRef(f"{dataset}/episode/{placement.episode_index}")
-        _add_task_object(graph, episode, placement.object_name, placement.x, placement.y)
+        _add_task_object(graph, episode, placement.object_name, (placement.x, placement.y, placement.z))
     return dataset
 
 
@@ -85,20 +85,20 @@ def add_rollout(graph: Graph, log: RolloutLog, dataset: URIRef) -> URIRef:
         graph.add((run, CP["index"], _index(r.index)))
         graph.add((run, CP.status, Literal(r.status)))
         graph.add((rollout, CP.hasRun, run))
-        for name, (x, y) in r.object_positions.items():
-            _add_task_object(graph, run, name, x, y)
+        for name, xyz in r.object_positions.items():
+            _add_task_object(graph, run, name, xyz)
     return rollout
 
 
-def _add_task_object(graph: Graph, owner: URIRef, name: str, x: float, y: float) -> None:
+def _add_task_object(graph: Graph, owner: URIRef, name: str, xyz: tuple[float, float, float]) -> None:
     obj = URIRef(f"{owner}/object/{quote(name, safe='')}")
     position = URIRef(f"{obj}/position")
     graph.add((obj, RDF.type, CP.TaskObject))
     graph.add((obj, CP.name, Literal(name)))
     graph.add((obj, CP.hasPosition, position))
     graph.add((position, RDF.type, CP.Position))
-    graph.add((position, CP.positionX, _decimal(x)))
-    graph.add((position, CP.positionY, _decimal(y)))
+    for prop, value in zip((CP.positionX, CP.positionY, CP.positionZ), xyz):
+        graph.add((position, prop, _decimal(value)))
     graph.add((owner, CP.hasTaskObject, obj))
 
 

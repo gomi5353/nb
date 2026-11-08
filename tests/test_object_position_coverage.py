@@ -331,7 +331,7 @@ def test_episodes_of_no_dataset_do_not_count(tmp_path: Path) -> None:
         SPEC
         + "spec:stray a cp:Episode ; cp:index 99 ; cp:hasTaskObject spec:stray_cube .\n"
         + 'spec:stray_cube a cp:TaskObject ; cp:name "cube" ; cp:hasPosition spec:stray_pos .\n'
-        + "spec:stray_pos a cp:Position ; cp:positionX 0.15 ; cp:positionY 0.15 .\n"
+        + "spec:stray_pos a cp:Position ; cp:positionX 0.15 ; cp:positionY 0.15 ; cp:positionZ 0.9 .\n"
     )
     dataset = write_dataset(tmp_path / "ds", {i: {"cube": [xy]} for i, xy in enumerate(CELL_CENTERS[:3])})
     report = verify_object_position_coverage(dataset, spec)

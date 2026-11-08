@@ -35,9 +35,9 @@ class RolloutRun:
         return self.status != "aborted"
 
     @property
-    def object_positions(self) -> dict[str, tuple[float, float]]:
-        """name -> (x, y) of the object's initial position."""
-        return {name: (float(p[0]), float(p[1])) for name, p in self.factors.get(OBJECT_POSITION_FACTOR, {}).items()}
+    def object_positions(self) -> dict[str, tuple[float, float, float]]:
+        """name -> (x, y, z) of the object's initial position."""
+        return {name: (float(p[0]), float(p[1]), float(p[2])) for name, p in self.factors.get(OBJECT_POSITION_FACTOR, {}).items()}
 
 
 @dataclass
@@ -99,8 +99,11 @@ def read_rollout_log(path: str | Path) -> RolloutLog:
             raise RolloutLogError(f"{path}: episode {index} appears twice")
         seen.add(index)
         run = RolloutRun(index, status, record.get("factors", {}))
-        for name, (x, y) in run.object_positions.items():
-            if not (math.isfinite(x) and math.isfinite(y)):
+        for name, p in run.factors.get(OBJECT_POSITION_FACTOR, {}).items():
+            if not (isinstance(p, list) and len(p) == 3 and all(isinstance(v, (int, float)) for v in p)):
+                raise RolloutLogError(f"{path}: episode {index}: position of '{name}' must be [x, y, z], got {p!r}")
+        for name, xyz in run.object_positions.items():
+            if not all(math.isfinite(v) for v in xyz):
                 raise RolloutLogError(f"{path}: episode {index}: non-finite position for '{name}'")
         log.runs.append(run)
     return log
