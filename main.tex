@@ -346,7 +346,7 @@ The course provides the following resources:
 
 These resources establish a common starting point while allowing students to focus on understanding and developing the robot learning pipeline. Each group must select and complete one of the three predefined tasks described in Section~\ref{sec:task-settings}. Task selection will be conducted on a first-come, first-served basis through a shared sign-up sheet. 
 
-Student submissions will be evaluated through public and private leaderboards. During the development phase, a public validation configuration will be available to help students monitor policy performance and guide iterative improvements. Final rankings will be determined using a separate private test configuration to ensure model generalization and integrity. Further details regarding leaderboard access and evaluation procedures will be announced separately.
+Student submissions will be evaluated through public and private leaderboards. During the development phase, a public validation configuration will be available to help students monitor policy performance and guide iterative improvements. Final rankings will be determined using a separate private test configuration to ensure model generalization and integrity. Further details regarding leaderboard access, the evaluation procedure, and checkpoint submission will be announced at a later date (Section~\ref{sec:leaderboard}).
 
 \begin{tutornote}
 \label{ttn:entry-grading}
@@ -369,6 +369,7 @@ Student submissions will be evaluated through public and private leaderboards. D
 \end{tutornote}
 
 \subsection{Leaderboard}
+\label{sec:leaderboard}
 
 Some universities may have a leaderboard where groups compete with their peers on the performance of the three predefined tasks. Ask the TAs at your own university for details, not the NYCU TAs.
 
@@ -574,8 +575,8 @@ The check is built from three knowledge-representation tools:
 
 Coverage is a diagnostic, not a proof of the cause of a failure. An uncovered evaluation region is evidence of a
 possible gap in the data distribution, while complete coverage does not guarantee that a policy will succeed. Failures
-should be treated as feedback: inspected in detail, tested with experiments, and used to refine the collection. Groups
-are required to add further factors from STAR-Gen or from other papers, and must explain in the report how each factor is measured and why it was chosen. Section~\ref{sec:coverage-howto} describes the formal model and how to run the check.
+should be treated as feedback: inspected in detail, tested with experiments, and used to refine the collection. In
+addition to object position, each group is required to add further coverage factors from STAR-Gen or from other papers, and to explain in the report how each factor is measured and why it was chosen. Section~\ref{sec:coverage-howto} describes the formal model and how to run the check, and Section~\ref{sec:coverage-factor} describes how to add a factor.
 
 
 
@@ -1399,10 +1400,7 @@ the three predefined tasks configuration for recording: the Franka robot, the ac
 \paragraph{Rollout Input Features}
 \label{sec:rollout-inputs}
 
-You may modify the input and output features in your own experiments. However, the checkpoint submitted for leaderboard evaluation must be compatible with the specified rollout 
-interface and use exactly the input and output features defined below. Ensure that your policy accepts the required observation features and produces the required action features 
-with the expected shapes and data types. Your LeRobot dataset may contain additional metadata or fields, but the submitted policy must use only the specified input features and 
-predict only the specified output features.
+You may modify the input and output features in your own experiments. However, the checkpoint submitted for leaderboard evaluation (Section~\ref{sec:leaderboard}) must be compatible with the specified rollout interface and use exactly the input and output features defined below. Ensure that your policy accepts the required observation features and produces the required action features with the expected shapes and data types. Your LeRobot dataset may contain additional metadata or fields, but the submitted policy must use only the specified input features and predict only the specified output features.
 
 \begin{longtable}{L{0.31\linewidth}L{0.12\linewidth}L{0.15\linewidth}L{0.37\linewidth}}
 \toprule
@@ -1531,9 +1529,11 @@ The comparison uses the public evaluation file only; the final ranking uses diff
 public range is necessary but not sufficient.
 
 \subsection{Adding a New Dataset Coverage Factor}
+\label{sec:coverage-factor}
 
-This optional extension explains how to extend the verifier when object position is not the factor you want to
-investigate. Examples include lighting, camera viewpoint, object orientation, appearance, background, and motion
+Each group is required to add further coverage factors beyond object position
+(Section~\ref{sec:object-position-coverage-concept}). This section explains how to extend the verifier with such a
+factor. Examples include lighting, camera viewpoint, object orientation, appearance, background, and motion
 speed. Run the complete object position example first, and choose a factor that can be recorded as dataset metadata.
 
 \subsubsection{Decide Between a Rule and a Coverage Factor}
@@ -1981,7 +1981,7 @@ success rate at the end. On an invalid flag value it prints the error and exits 
 \section{Deliverables}
 % ============================================================
 
-Submission deadlines and specific penalty policies vary by institution. Please follow the announcements and designated submission platform provided by your institution.
+Submission deadlines and specific penalty policies vary by institution. Please follow the announcements and designated submission platform provided by your institution. The required report contents, the files to submit, and their names and directory structure will be given in a separate document, announced to students.
 
 \begin{itemize}
     \item \textbf{Deadline: }
@@ -1991,7 +1991,7 @@ Submission deadlines and specific penalty policies vary by institution. Please f
     Late submissions will be subject to a penalty. The specific deduction follows your institution's policy.
 
     \item \textbf{Submission Format: }
-    Please follow the required file naming, directory structure, file paths, and report format. Incorrect submission formats, including a report not written in English, may result in a penalty according to your institution's
+    Please follow the file naming, directory structure, file paths, and report format given in that document. Incorrect submission formats, including a report not written in English, may result in a penalty according to your institution's
     policy. % 額外公告
 
     \item \textbf{Plagiarism: }
