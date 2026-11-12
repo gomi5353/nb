@@ -226,7 +226,7 @@ domain_randomization(
   distance of their origins), that environment is resampled, up to
   `max_retries` times (default 5). `min_distance` is at least the sum of the
   two largest object radii, so that objects never spawn inside each other.
-- For a single object, leisaac's `randomize_object_uniform(name, pose_range)`
+- For a single object, LeIsaac's `randomize_object_uniform(name, pose_range)`
   does the same without the distance check.
 - `randomize_light_conditions` changes the light intensity (and optionally the
   color temperature) at every reset.
