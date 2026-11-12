@@ -318,6 +318,7 @@ After completing the project, students should be able to:
   \item Configure a simulated robot manipulation task using Isaac Sim and Isaac Lab \cite{isaacsim2026,isaaclab}.
   \item Develop a data collection workflow to acquire robot demonstrations for learning-based manipulation.
   \item Understand how demonstration quality, diversity, and dataset representation affect policy learning and generalization.
+  \item Formulate data-coverage requirements for a task and use ontology-based verification to relate dataset coverage to policy failures.
   \item Train and configure an imitation-learning \cite{wiki_imitation_learning} policy for a simulated pick-and-place task.
   \item Evaluate robot policies under different simulation conditions using systematic experiments.
   \item Analyze policy failures, identify possible causes, and propose evidence-based improvements to the robot learning system. 
@@ -328,7 +329,7 @@ After completing the project, students should be able to:
 % ============================================================
 \section{Course Levels}
 % ============================================================
-This course project is organized into \textbf{two levels} to accommodate different levels of experience and encourage progressive learning. The \textbf{Entry Level} provides a structured foundation for developing and evaluating a end-to-end robot learning pipeline, while the optional \textbf{Advanced Level} allows interested groups to explore more open-ended problems in robot learning and system design. This structure enables students to first establish essential development and evaluation skills before engaging in more independent and exploratory projects.
+This course project is organized into \textbf{two levels} to accommodate different levels of experience and encourage progressive learning. The \textbf{Entry Level} provides a structured foundation for developing and evaluating a end-to-end robot learning pipeline, while the optional \textbf{Advanced Level} allows interested groups to explore more open-ended problems in robot learning and system design. This structure enables students to first establish essential development and evaluation skills before engaging in more independent and exploratory projects. Whether the Advanced Level and a leaderboard are offered differs by institution; ask the TAs at your own institution, not the NYCU TAs.
 
 The main difference between the two levels lies in the scope of the tasks and the degree of student autonomy. At the Entry Level, students select from predefined manipulation tasks and work within a shared development and evaluation framework. At the Advanced Level, students are expected to define their own tasks, configure the corresponding environments, design appropriate evaluation metrics, and develop and evaluate their systems accordingly.
 
@@ -380,7 +381,7 @@ The link (\url{https://github.com/asddzxcc1856/aicapstone-worker}) describes how
 
 \subsection{Advanced Level (Optional)} 
 
-\textbf{Not all universities has this part. Please ask your TAs}
+\textbf{Not all universities has this part. Please ask your TAs.}
 
 Advanced Level provides an opportunity for interested groups to build on the skills developed at the Entry Level and pursue more open-ended robot learning projects. Rather than selecting only from predefined tasks, students will define their own manipulation tasks, configure the associated task setups within the Isaac Sim and Isaac Lab frameworks, and design suitable evaluation metrics. This level emphasizes independent problem formulation, engineering decisions, and evidence-based evaluation.
 
@@ -429,7 +430,7 @@ Because Advanced-level projects involve student-defined tasks and evaluation pro
 \label{sec:structure-workflow}
 % ============================================================
 
-The course project follows the end-to-end robot learning pipeline. At the Entry Level, students first become familiar with the repository and the simulated task configurations, then collect demonstrations with a controller of their own, train and evaluate an imitation-learning policy, and finally verify whether the collected data covers the conditions that the task requires. The four subsections below follow this order. Each one introduces the concepts of a stage and points to the section of Implementation Details or Usage that describes the corresponding procedure.
+The course project follows the end-to-end robot learning pipeline. At the Entry Level, students first become familiar with the repository and the simulated task configurations, then collect demonstrations with a controller of their own, train and evaluate an imitation-learning policy, and finally verify whether the collected data covers the conditions that the task requires. The four subsections below follow this order. Each one introduces the concepts of a stage and points to the section of Implementation Details that describes the corresponding procedure; Section~\ref{sec:setup} describes how to install the software first.
 
 \begin{longtable}{L{0.20\linewidth}L{0.74\linewidth}}
 \toprule
@@ -494,7 +495,7 @@ demonstrations are the only examples from which the policy learns. Two common ap
       improve scalability and reduce human effort, but may produce less behavioral diversity.
 \end{itemize}
 
-In this document, the term \textbf{data-collection controller} (hereafter referred to as the \textbf{controller}) refers to the component that determines the 8-D action sent to \code{env.step()} at each simulation step during demonstration collection. It may be a scripted state machine, keyboard teleoperation, a motion planner, or another method, and acts as the expert that the policy learns to imitate. It does not refer to the robot's low-level joint controller (Isaac Lab's PD actuators, with fixed gains: stiffness 80 and damping 4 for the arm joints), nor to an inverse kinematics (IK) solver that it may use internally.
+In this document, the term \textbf{data-collection controller} (hereafter referred to as the \textbf{controller}) refers to the component that determines the 8-D action sent to \code{env.step()} at each simulation step during demonstration collection. It may be a scripted state machine, keyboard teleoperation, a motion planner, or another method, and acts as the expert that the policy learns to imitate. It does not refer to the robot's low-level joint controller (Isaac Lab's proportional-derivative (PD) actuators, with fixed gains: stiffness 80 and damping 4 for the arm joints), nor to an inverse kinematics (IK) solver that it may use internally.
 
 An important property of the collected data is \textbf{diversity}. Many nearly identical demonstrations may yield a
 policy that performs well only under a narrow set of conditions. Varying the initial states, object configurations,
@@ -562,13 +563,13 @@ collection budget. Running the check is a required step for every dataset.
 The check is built from three knowledge-representation tools:
 
 \begin{itemize}
-  \item \textbf{Ontology (OWL) and Description Logic.} An OWL ontology formally represents the domain concepts relevant
+  \item \textbf{Ontology (OWL) and Description Logic.} An ontology in the Web Ontology Language (OWL) formally represents the domain concepts relevant
         to coverage verification, including generalization axes, datasets, episodes, task objects, their initial
         positions, and coverage requirements, together with the relationships and constraints among them. OWL grounds these concepts in
         Description Logic semantics.
   \item \textbf{RDF knowledge graph in Turtle.} The recorded dataset and the group's coverage requirement are both
-        expressed as RDF facts over this vocabulary. The requirement is written as a small Turtle file \cite{w3cTurtle}.
-  \item \textbf{SHACL validation.} SHACL shapes \cite{w3cShacl} turn the requirement into executable constraints: they
+        expressed as Resource Description Framework (RDF) facts over this vocabulary. The requirement is written as a small Turtle file \cite{w3cTurtle}.
+  \item \textbf{SHACL validation.} Shapes Constraint Language (SHACL) shapes \cite{w3cShacl} turn the requirement into executable constraints: they
         compare positions against cell bounds, count episodes per cell, and report violations. This step is needed
         because Description Logic alone does not perform numeric interval comparison or counting.
 \end{itemize}
@@ -576,8 +577,102 @@ The check is built from three knowledge-representation tools:
 Coverage is a diagnostic, not a proof of the cause of a failure. An uncovered evaluation region is evidence of a
 possible gap in the data distribution, while complete coverage does not guarantee that a policy will succeed. Failures
 should be treated as feedback: inspected in detail, tested with experiments, and used to refine the collection. In
-addition to object position, each group is required to add further coverage factors from STAR-Gen or from other papers, and to explain in the report how each factor is measured and why it was chosen. Section~\ref{sec:coverage-howto} describes the formal model and how to run the check, and Section~\ref{sec:coverage-factor} describes how to add a factor.
+addition to object position, each group is required to add at least one further coverage factor from STAR-Gen or from other papers, and to explain in the report how each factor is measured and why it was chosen. Section~\ref{sec:coverage-howto} describes the formal model and how to run the check, and Section~\ref{sec:coverage-factor} describes how to add a factor.
 
+
+
+% ============================================================
+\section{Setup}
+\label{sec:setup}
+% ============================================================
+
+\subsection{Required Resources}
+
+\begin{itemize}
+  \item a Linux x86\_64 machine with an NVIDIA RTX GPU with at least 16~GB of memory and driver 570 or newer. Recording and rollout render camera images, which requires a GPU with RT cores (GeForce RTX, RTX A/Ada/PRO, L40S). Data-center GPUs without RT cores (A100, H100, V100) can be used for training only;
+  \item Docker and the NVIDIA Container Toolkit, because the simulator runs in a container that uses the GPU;
+  \item Python 3.11 and \code{uv} (the Python version is pinned in \code{.python-version});
+  \item Git with submodule support;
+  \item a Hugging Face account and access token, for transferring datasets and checkpoints;
+  \item optionally, a Weights \& Biases account, for monitoring training.
+\end{itemize}
+
+Check the tools:
+\begin{lstlisting}[language=bash]
+uv --version
+docker --version
+make --version
+nvidia-smi
+\end{lstlisting}
+
+
+\subsection{GlowsAI}
+
+Each group receives 10 GlowsAI credits for the course project. Follow the GlowsAI setup guide
+(\url{https://docs.google.com/presentation/d/1xPHm3gNNvLbX7aOWnY_xW5dfVLEa9XiBuskMbRsgxI8/edit?usp=sharing})
+to create a GPU instance. When you use the terminal of the Virtual Network Computing (VNC) desktop on GlowsAI, switch to the \code{glows} user first:
+
+\begin{lstlisting}[language=bash]
+su - glows
+\end{lstlisting}
+
+
+\subsection{Environment Setup}
+
+You cannot push to the course repository, so your changes would stay on one machine. First fork the course
+repository on GitHub (one member forks, the others are added as collaborators), then clone the \emph{fork} and add the
+course repository as \code{upstream} to receive later updates (\code{git fetch upstream \&\& git merge upstream/main}).
+A fork of a public repository is public; for a private copy, create a private repository and push a mirror
+(\code{git clone --bare} the course repository, then \code{git push --mirror} to yours). Datasets and checkpoints are
+shared through the Hugging Face Hub, not Git. On the host:
+
+\begin{lstlisting}[language=bash]
+git clone https://github.com/<github-user>/EDRLP   # your fork
+cd EDRLP
+git remote add upstream https://github.com/HCIS-lab/EDRLP
+make submodules                    # Isaac Lab submodule; the launch targets also run it
+uv sync                            # host environment for training and the coverage check
+source .venv/bin/activate
+hf auth login                      # paste your Hugging Face access token
+export HF_USER=<your-huggingface-username>
+\end{lstlisting}
+
+Build and enter the Isaac Lab container. Choose the target that matches your machine; the first build takes a while:
+
+\begin{lstlisting}[language=bash]
+make launch-isaaclab               # local machine
+make launch-isaaclab-glowsai-4090  # RTX 4090
+make launch-isaaclab-glowsai-l40s  # L40S
+\end{lstlisting}
+
+The command drops you into a shell inside the container, with the repository mounted at
+\path{/workspace/physicalai}. Recording and rollout run there. Run \code{hf auth login} and set \code{HF_USER}
+inside the container as well, if you transfer data from it. Run \code{make check-isaaclab-gpu} if Isaac Sim cannot
+find the GPU, and \code{make test} on the host to confirm that the Python environment works.
+
+
+\subsection{Hugging Face Upload and Download}
+
+Before uploading or downloading, make sure that you are logged in:
+\begin{lstlisting}[language=bash]
+hf auth login    # log in if needed
+hf auth whoami   # shows the logged-in user
+\end{lstlisting}
+
+Upload a dataset (on the host, recorded datasets are under \path{datasets/}) or a trained checkpoint:
+\begin{lstlisting}[language=bash]
+hf upload ${HF_USER}/<dataset_repo> datasets/${HF_USER}/<dataset_repo> --repo-type dataset
+hf upload ${HF_USER}/<policy_repo> <output_dir>/checkpoints/last/pretrained_model --repo-type model
+\end{lstlisting}
+
+Download a dataset or a checkpoint:
+\begin{lstlisting}[language=bash]
+hf download ${HF_USER}/<dataset_repo> --repo-type dataset --local-dir datasets/${HF_USER}/<dataset_repo>
+hf download ${HF_USER}/<policy_repo> --repo-type model --local-dir checkpoints/<policy_repo>
+\end{lstlisting}
+
+Add \code{--revision <branch, tag, or commit>} to download a specific version. Record the commit hash of every dataset
+and checkpoint that you report, so that your results can be reproduced.
 
 
 % ============================================================
@@ -743,6 +838,30 @@ still holding an object; in Cup Stacking, for example, it can already pass while
 held at nesting height above the pink cup.
 
 
+\subsection{Rollout Contract}
+\label{sec:rollout-contract}
+
+The rollout contract is the set of settings that rollout and the leaderboard evaluation assume. It must not change in
+the three predefined tasks configuration for recording: the Franka robot, the action space of \code{use_joint_position_actions()} (arm joint stiffness 80, damping 4), \code{sim.dt = 1/60} (the Isaac Lab default) with \code{decimation = 1}, the 9-D joint state, exactly the \code{front} and \code{wrist} RGB cameras at $640\times480$, and \code{build_lerobot_frame}.
+
+\paragraph{Rollout Input Features}
+\label{sec:rollout-inputs}
+
+You may modify the input and output features in your own experiments. However, the checkpoint submitted for leaderboard evaluation (Section~\ref{sec:leaderboard}) must be compatible with the specified rollout interface and use exactly the input and output features defined below. Ensure that your policy accepts the required observation features and produces the required action features with the expected shapes and data types. Your LeRobot dataset may contain additional metadata or fields, but the submitted policy must use only the specified input features and predict only the specified output features.
+
+\begin{longtable}{L{0.31\linewidth}L{0.12\linewidth}L{0.15\linewidth}L{0.37\linewidth}}
+\toprule
+\textbf{Key} & \textbf{dtype} & \textbf{shape} & \textbf{meaning} \\
+\midrule
+\code{observation.state} & float32 & \code{(9,)} & Measured joint positions, in the order \code{panda_joint1..7, panda_finger_joint1, panda_finger_joint2}. Arm in rad, fingers in m. \\
+\code{action}  & float32 & \code{(8,)} & \code{[0:7]} absolute joint position targets in rad; \code{[7]} gripper: $< 0$ closes, $\geq 0$ opens. Use $\pm 1$. \\
+\code{observation.images.front}  & image/video & \code{(480, 640, 3)} & RGB uint8, height $\times$ width $\times$ channels (HWC), from the fixed front camera. \\
+\code{observation.images.wrist}  & image/video & \code{(480, 640, 3)} & RGB uint8, HWC, from the wrist camera. \\
+\code{task_index} & int64 & \code{(1,)} & Index into the task vocabulary in \code{meta/tasks.parquet}. The task string must equal the \code{task_description} of the task configuration. \\
+\bottomrule
+\end{longtable}
+
+
 \subsection{Data Collection}
 \label{sec:data-collection}
 
@@ -878,14 +997,14 @@ The following recording behaviors and constraints are important for implementing
 
 \begin{enumerate}
   \item \textbf{One frame per \code{env.step()}.} If you do not step, nothing is recorded.
-  \item \textbf{The first 5 steps after every reset are skipped.} Camera images from before the reset may still appear
-        there, so hold the arm still during those steps.
+  \item \textbf{The first 5 steps after every reset are skipped} to avoid recording unstable initial states. Camera
+        images from before the reset may still appear there, so hold the arm still during those steps
+        \cite{leisaac_recorder}.
   \item \textbf{Keeping or dropping an episode is decided at the next reset} by the \code{success} term. Any call to
         \code{env.reset()} ends the current episode.
   \item \textbf{Only environment 0 is recorded.} Always use \code{num_envs=1}.
   \item \textbf{The export mode must be \code{EXPORT_SUCCEEDED_ONLY}} (or its resume variant). Failed episodes never reach the disk.
   \item \textbf{\code{finalize()} is mandatory.} Without it, the Parquet files have no footer and the dataset cannot be loaded.
-  \item \textbf{The first 5 steps after every reset are skipped.} These frames are discarded to avoid recording unstable initial states. Keep the robot stationary during these steps to allow the scene and camera observations to settle \cite{leisaac_recorder}.
 \end{enumerate}
 
 \paragraph{Object Position Columns.}
@@ -978,8 +1097,7 @@ existing episodes.
     print(ds.num_episodes, ds.num_frames, ds.fps)
     print(list(ds.features))
     \end{lstlisting}
-  \item \textbf{Run the object position coverage check} (Section~\ref{sec:coverage-howto}). It is required for every
-        dataset; it is a coverage diagnostic and does not replace visual inspection.
+  \item \textbf{Run the object position coverage check} (Section~\ref{sec:coverage-howto}). It is a coverage diagnostic and does not replace visual inspection.
 \end{enumerate}
 
 
@@ -1084,7 +1202,7 @@ The fields have the following meanings:
 \bottomrule
 \end{longtable}
 
-An object block can be deleted to exclude that object from checking, or copied to add another object. The \code{# Already} comment shows the current position range in the dataset for reference only. The target area should define the desired coverage rather than copy the range already present in the dataset.
+An object block can be deleted to exclude that object from checking, or copied to add another object. The \code{# Already} comment shows the current position range in the dataset for reference only; do not copy it as the target area (see \emph{Choosing the values} below).
 
 \paragraph{Choosing the values.} The area, grid size, and minimum number of episodes depend on the task and collection setup. The following guidelines help define these values:
 \begin{itemize}
@@ -1362,7 +1480,7 @@ These are the assertions of the DL model above, written as RDF triples. Use the 
 
 \paragraph{What Is Checked and What Is Not.}
 
-The dataset reader takes the first row with the lowest \code{frame_index} in each episode and uses its recorded position \([x,y,z]\); the grid uses \(x\) and \(y\). Every episode saved in the dataset counts. Failed attempts are discarded by the recorder and never reach the dataset, so the check counts the starting positions of successful demonstrations only.
+The dataset reader takes the first row with the lowest \code{frame_index} in each episode and uses its recorded position \([x,y,z]\); the grid uses \(x\) and \(y\). Every episode saved in the dataset counts; failed attempts never reach it (Section~\ref{sec:recording}).
 
 The current DL/SHACL model does not check orientation, height, object-object position combinations, trajectories, grasp quality, or policy success. Such checks require new properties, shapes, and aggregation rules.
 
@@ -1388,37 +1506,93 @@ Everything lands in one cell & Object positions never changed between episodes. 
 \bottomrule
 \end{longtable}
 
-The check covers only the x and y position at the first frame, and each object separately. It does not check orientation, height, combinations of objects, trajectories, or grasp success (Section~\ref{sec:coverage-dl}).
+
+\subsection{Training}
+\label{sec:training}
+
+Training runs on the host, because container I/O and GPU pass-through reduce training throughput.
+\begin{lstlisting}[language=bash]
+# at the repo root
+uv sync
+source .venv/bin/activate
+wandb login                        # optional, for --wandb.enable=true
+lerobot-train \
+  --dataset.repo_id=${HF_USER}/<dataset_repo> \
+  --policy.type=diffusion \
+  --policy.device=cuda \
+  --policy.push_to_hub=false \
+  --policy.n_obs_steps=2 --policy.horizon=16 --policy.n_action_steps=8 \
+  --policy.optimizer_lr=1e-4 \
+  --output_dir=outputs/train/<job_name> \
+  --job_name=<job_name> \
+  --steps=100000 --save_freq=20000 --log_freq=1000 \
+  --wandb.enable=true
+\end{lstlisting}
+
+\begin{itemize}
+  \item \code{--dataset.repo_id} downloads the dataset from the Hugging Face Hub. To train on a local copy, also pass
+        \code{--dataset.root=datasets/<HF_USER>/<dataset_repo>}.
+  \item \code{--policy.type} selects the policy, e.g.\ \code{diffusion} or \code{act}. The \code{--policy.*} options after
+        it are policy-specific; the line above uses Diffusion Policy options. For ACT, use options such as
+        \code{--policy.chunk_size} and \code{--policy.n_action_steps}.
+  \item \code{--policy.n_action_steps} is the number of actions that rollout executes open loop after each inference,
+        each lasting one 1/60~s step. \code{rollout.py} uses the value stored in the checkpoint unless you pass
+        \code{--policy_action_horizon}.
+  \item Reduce \code{--batch_size} if you run out of GPU memory.
+  \item For several GPUs, use \code{accelerate launch --multi_gpu --num_processes=N $(which lerobot-train) <args>}.
+\end{itemize}
+
+Checkpoints are written to \path{<output_dir>/checkpoints/<step>/pretrained_model}, and \path{checkpoints/last} points to
+the latest one. Each checkpoint contains \code{config.json}, \code{model.safetensors}, and the pre- and post-processor files
+with the normalization statistics. See the LeRobot documentation \cite{cadene2024lerobot} for all options.
 
 
-\subsection{Rollout Contract}
-\label{sec:rollout-contract}
+\subsection{Rollout}
+\label{sec:rollout}
 
-The rollout contract is the set of settings that rollout and the leaderboard evaluation assume. It must not change in
-the three predefined tasks configuration for recording: the Franka robot, the action space of \code{use_joint_position_actions()} (arm joint stiffness 80, damping 4), \code{sim.dt = 1/60} (the Isaac Lab default) with \code{decimation = 1}, the 9-D joint state, exactly the \code{front} and \code{wrist} RGB cameras at $640\times480$, and \code{build_lerobot_frame}. 
+Run the evaluation inside the Isaac Lab container:
 
-\paragraph{Rollout Input Features}
-\label{sec:rollout-inputs}
+\begin{lstlisting}[language=bash]
+python scripts/rollout.py \
+  --task=eval/cup_stacking_eval.py \
+  --policy_type=lerobot-diffusion \
+  --policy_checkpoint_path=outputs/train/<job_name>/checkpoints/last/pretrained_model \
+  --device=cuda --enable_cameras \
+  --eval_rounds=10
+\end{lstlisting}
 
-You may modify the input and output features in your own experiments. However, the checkpoint submitted for leaderboard evaluation (Section~\ref{sec:leaderboard}) must be compatible with the specified rollout interface and use exactly the input and output features defined below. Ensure that your policy accepts the required observation features and produces the required action features with the expected shapes and data types. Your LeRobot dataset may contain additional metadata or fields, but the submitted policy must use only the specified input features and predict only the specified output features.
-
-\begin{longtable}{L{0.31\linewidth}L{0.12\linewidth}L{0.15\linewidth}L{0.37\linewidth}}
+\begin{longtable}{L{0.30\linewidth}L{0.62\linewidth}}
 \toprule
-\textbf{Key} & \textbf{dtype} & \textbf{shape} & \textbf{meaning} \\
+\textbf{Flag} & \textbf{Meaning} \\
 \midrule
-\code{observation.state} & float32 & \code{(9,)} & Measured joint positions, in the order \code{panda_joint1..7, panda_finger_joint1, panda_finger_joint2}. Arm in rad, fingers in m. \\
-\code{action}  & float32 & \code{(8,)} & \code{[0:7]} absolute joint position targets in rad; \code{[7]} gripper: $< 0$ closes, $\geq 0$ opens. Use $\pm 1$. \\
-\code{observation.images.front}  & image/video & \code{(480, 640, 3)} & RGB uint8, HWC, from the fixed front camera. \\
-\code{observation.images.wrist}  & image/video & \code{(480, 640, 3)} & RGB uint8, HWC, from the wrist camera. \\
-\code{task_index} & int64 & \code{(1,)} & Index into the task vocabulary in \code{meta/tasks.parquet}. The task string must equal the \code{task_description} of the task configuration. \\
+\endhead
+\code{--task} & A Gym ID, a path to an evaluation \code{.py} file, or a \code{module:Class} reference. Use the public
+               evaluation files: \code{eval/cup_stacking_eval.py}, \code{eval/cutlery_arrangement_eval.py}, or
+               \code{eval/toy_blocks_collection_eval.py}. \\
+\code{--policy_type} & \code{lerobot-<type>}, matching \code{--policy.type} in training, e.g.\ \code{lerobot-diffusion} or
+               \code{lerobot-act}. Required; one of \code{lerobot-diffusion}, \code{-act}, \code{-smolvla}, \code{-pi0},
+               \code{-pi05}, \code{-vqbet}, \code{-tdmpc}, \code{-sac}, \code{-groot}, \code{-xvla}. \\
+\code{--policy_checkpoint_path} & Local \code{pretrained_model} directory of the checkpoint. \\
+\code{--eval_rounds} & Number of evaluation episodes. With 0, there is no timeout, and an episode runs until it succeeds or is reset manually. \\
+\code{--policy_action_horizon} & Optional. Actions executed per inference; overrides \code{n_action_steps} of the
+               checkpoint. Must be positive and at most the actions one inference predicts (\code{horizon - n_obs_steps + 1}
+               for diffusion, \code{chunk_size} for ACT; only 1 for ACT with temporal ensembling). \\
+\code{--episode_length_s} & Timeout of each episode in seconds. Default: the task's graded length (20, 40, or 60~s). \\
+\code{--seed} & Seed of the object position and lighting randomization (default 42). Keep it fixed to compare checkpoints. \\
+\code{--num_envs} & Number of episodes simulated in parallel. \\
+\code{--headless} & Run without the GUI, which is faster. \\
 \bottomrule
 \end{longtable}
+
+An episode ends as soon as the \code{success} term of the evaluation file becomes true, or at the timeout. The script
+prints the episode length and action horizon in use at start, the success rate after every round, and the final
+success rate at the end. On an invalid flag value it prints the error and exits with a non-zero code.
 
 
 \subsection{Compare Your Dataset with a Rollout}
 \label{sec:rollout-compare}
 
-The checker first \code{check} the dataset against the specified coverage requirements. After you evaluate a policy, the checker \code{compare} whether the dataset covers the initial object positions used during policy evaluation. It reads where each rollout episode (run) started and whether it succeeded, shows the runs that started where your dataset is thin, and lists the cells to record next.
+\code{check} tests a dataset against your coverage requirements. After you evaluate a policy, \code{compare} tests whether that dataset covers the initial object positions of the rollout. It reads where each rollout episode (run) started and whether it succeeded, shows the runs that started where your dataset is thin, and lists the cells to record next.
 
 
 \paragraph{1. Run the rollout.} Each run of \code{rollout.py} (Section~\ref{sec:rollout}) automatically saves a \path{outputs/rollout/<timestamp>.jsonl} file. For each episode, the file records the position of each randomized object immediately after the reset, using the environment-local frame as in the dataset, along with the episode outcome. The header line records the poses of the objects that remain fixed throughout the run, including \code{robot_base} and \code{fixed_objects} (\code{fixed_object_names}). Each pose contains a \code{pos} value and a quaternion \code{rot} in 
@@ -1528,10 +1702,11 @@ The exit code is 0 when the comparison ran, and 1 on an error (for example an un
 The comparison uses the public evaluation file only; the final ranking uses different positions, so covering the
 public range is necessary but not sufficient.
 
+
 \subsection{Adding a New Dataset Coverage Factor}
 \label{sec:coverage-factor}
 
-Each group is required to add further coverage factors beyond object position
+Each group is required to add at least one coverage factor beyond object position
 (Section~\ref{sec:object-position-coverage-concept}). This section explains how to extend the verifier with such a
 factor. Examples include lighting, camera viewpoint, object orientation, appearance, background, and motion
 speed. Run the complete object position example first, and choose a factor that can be recorded as dataset metadata.
@@ -1800,181 +1975,6 @@ the verification metadata a policy input.
 Coverage is evidence, not proof. A coverage gap can support a hypothesis about a policy failure, but complete
 coverage does not guarantee policy success.
 \end{quote}
-
-
-% ============================================================
-\section{Usage}
-% ============================================================
-
-\subsection{Required Resources}
-
-\begin{itemize}
-  \item a Linux x86\_64 machine with an NVIDIA RTX GPU with at least 16~GB of memory and driver 570 or newer. Recording and rollout render camera images, which requires a GPU with RT cores (GeForce RTX, RTX A/Ada/PRO, L40S). Data-center GPUs without RT cores (A100, H100, V100) can be used for training only;
-  \item Docker and the NVIDIA Container Toolkit, because the simulator runs in a container that uses the GPU;
-  \item Python 3.11 and \code{uv} (the Python version is pinned in \code{.python-version});
-  \item Git with submodule support;
-  \item a Hugging Face account and access token, for transferring datasets and checkpoints;
-  \item optionally, a Weights \& Biases account, for monitoring training.
-\end{itemize}
-
-Check the tools:
-\begin{lstlisting}[language=bash]
-uv --version
-docker --version
-make --version
-nvidia-smi
-\end{lstlisting}
-
-
-\subsection{GlowsAI}
-
-Each group receives 10 GlowsAI credits for the course project. Follow the GlowsAI setup guide
-(\url{https://docs.google.com/presentation/d/1xPHm3gNNvLbX7aOWnY_xW5dfVLEa9XiBuskMbRsgxI8/edit?usp=sharing})
-to create a GPU instance. When you use the terminal of the VNC desktop on GlowsAI, switch to the \code{glows} user first:
-
-\begin{lstlisting}[language=bash]
-su - glows
-\end{lstlisting}
-
-
-\subsection{Environment Setup}
-
-You cannot push to the course repository, so your changes would stay on one machine. First fork the course
-repository on GitHub (one member forks, the others are added as collaborators), then clone the \emph{fork} and add the
-course repository as \code{upstream} to receive later updates (\code{git fetch upstream \&\& git merge upstream/main}).
-A fork of a public repository is public; for a private copy, create a private repository and push a mirror
-(\code{git clone --bare} the course repository, then \code{git push --mirror} to yours). Datasets and checkpoints are
-shared through the Hugging Face Hub, not Git. On the host:
-
-\begin{lstlisting}[language=bash]
-git clone https://github.com/<github-user>/EDRLP   # your fork
-cd EDRLP
-git remote add upstream https://github.com/HCIS-lab/EDRLP
-make submodules                    # Isaac Lab submodule; the launch targets also run it
-uv sync                            # host environment for training and the coverage check
-source .venv/bin/activate
-hf auth login                      # paste your Hugging Face access token
-export HF_USER=<your-huggingface-username>
-\end{lstlisting}
-
-Build and enter the Isaac Lab container. Choose the target that matches your machine; the first build takes a while:
-
-\begin{lstlisting}[language=bash]
-make launch-isaaclab               # local machine
-make launch-isaaclab-glowsai-4090  # RTX 4090
-make launch-isaaclab-glowsai-l40s  # L40S
-\end{lstlisting}
-
-The command drops you into a shell inside the container, with the repository mounted at
-\path{/workspace/physicalai}. Recording and rollout run there. Run \code{hf auth login} and set \code{HF_USER}
-inside the container as well, if you transfer data from it. Run \code{make check-isaaclab-gpu} if Isaac Sim cannot
-find the GPU, and \code{make test} on the host to confirm that the Python environment works.
-
-
-\subsection{Hugging Face Upload and Download}
-
-Before uploading or downloading, make sure that you are logged in:
-\begin{lstlisting}[language=bash]
-hf auth login    # log in if needed
-hf auth whoami   # shows the logged-in user
-\end{lstlisting}
-
-Upload a dataset (on the host, recorded datasets are under \path{datasets/}) or a trained checkpoint:
-\begin{lstlisting}[language=bash]
-hf upload ${HF_USER}/<dataset_repo> datasets/${HF_USER}/<dataset_repo> --repo-type dataset
-hf upload ${HF_USER}/<policy_repo> <output_dir>/checkpoints/last/pretrained_model --repo-type model
-\end{lstlisting}
-
-Download a dataset or a checkpoint:
-\begin{lstlisting}[language=bash]
-hf download ${HF_USER}/<dataset_repo> --repo-type dataset --local-dir datasets/${HF_USER}/<dataset_repo>
-hf download ${HF_USER}/<policy_repo> --repo-type model --local-dir checkpoints/<policy_repo>
-\end{lstlisting}
-
-Add \code{--revision <branch, tag, or commit>} to download a specific version. Record the commit hash of every dataset
-and checkpoint that you report, so that your results can be reproduced.
-
-
-\subsection{Training}
-\label{sec:training}
-
-Training runs on the host, because container I/O and GPU pass-through reduce training throughput.
-\begin{lstlisting}[language=bash]
-# at the repo root
-uv sync
-source .venv/bin/activate
-wandb login                        # optional, for --wandb.enable=true
-lerobot-train \
-  --dataset.repo_id=${HF_USER}/<dataset_repo> \
-  --policy.type=diffusion \
-  --policy.device=cuda \
-  --policy.push_to_hub=false \
-  --policy.n_obs_steps=2 --policy.horizon=16 --policy.n_action_steps=8 \
-  --policy.optimizer_lr=1e-4 \
-  --output_dir=outputs/train/<job_name> \
-  --job_name=<job_name> \
-  --steps=100000 --save_freq=20000 --log_freq=1000 \
-  --wandb.enable=true
-\end{lstlisting}
-
-\begin{itemize}
-  \item \code{--dataset.repo_id} downloads the dataset from the Hugging Face Hub. To train on a local copy, also pass
-        \code{--dataset.root=datasets/<HF_USER>/<dataset_repo>}.
-  \item \code{--policy.type} selects the policy, e.g.\ \code{diffusion} or \code{act}. The \code{--policy.*} options after
-        it are policy-specific; the line above uses Diffusion Policy options. For ACT, use options such as
-        \code{--policy.chunk_size} and \code{--policy.n_action_steps}.
-  \item \code{--policy.n_action_steps} is the number of actions that rollout executes open loop after each inference,
-        each lasting one 1/60~s step. \code{rollout.py} uses the value stored in the checkpoint unless you pass
-        \code{--policy_action_horizon}.
-  \item Reduce \code{--batch_size} if you run out of GPU memory.
-  \item For several GPUs, use \code{accelerate launch --multi_gpu --num_processes=N $(which lerobot-train) <args>}.
-\end{itemize}
-
-Checkpoints are written to \path{<output_dir>/checkpoints/<step>/pretrained_model}, and \path{checkpoints/last} points to
-the latest one. Each checkpoint contains \code{config.json}, \code{model.safetensors}, and the pre- and post-processor files
-with the normalization statistics. See the LeRobot documentation \cite{cadene2024lerobot} for all options.
-
-
-\subsection{Rollout}
-\label{sec:rollout}
-
-Run the evaluation inside the Isaac Lab container:
-
-\begin{lstlisting}[language=bash]
-python scripts/rollout.py \
-  --task=eval/cup_stacking_eval.py \
-  --policy_type=lerobot-diffusion \
-  --policy_checkpoint_path=outputs/train/<job_name>/checkpoints/last/pretrained_model \
-  --device=cuda --enable_cameras \
-  --eval_rounds=10
-\end{lstlisting}
-
-\begin{longtable}{L{0.30\linewidth}L{0.62\linewidth}}
-\toprule
-\textbf{Flag} & \textbf{Meaning} \\
-\midrule
-\endhead
-\code{--task} & A Gym ID, a path to an evaluation \code{.py} file, or a \code{module:Class} reference. Use the public
-               evaluation files: \code{eval/cup_stacking_eval.py}, \code{eval/cutlery_arrangement_eval.py}, or
-               \code{eval/toy_blocks_collection_eval.py}. \\
-\code{--policy_type} & \code{lerobot-<type>}, matching \code{--policy.type} in training, e.g.\ \code{lerobot-diffusion} or
-               \code{lerobot-act}. Required; one of \code{lerobot-diffusion}, \code{-act}, \code{-smolvla}, \code{-pi0},
-               \code{-pi05}, \code{-vqbet}, \code{-tdmpc}, \code{-sac}, \code{-groot}, \code{-xvla}. \\
-\code{--policy_checkpoint_path} & Local \code{pretrained_model} directory of the checkpoint. \\
-\code{--eval_rounds} & Number of evaluation episodes. With 0, there is no timeout, and an episode runs until it succeeds or is reset manually. \\
-\code{--policy_action_horizon} & Optional. Actions executed per inference; overrides \code{n_action_steps} of the
-               checkpoint. Must be positive and at most the actions one inference predicts (\code{horizon - n_obs_steps + 1}
-               for diffusion, \code{chunk_size} for ACT; only 1 for ACT with temporal ensembling). \\
-\code{--episode_length_s} & Timeout of each episode in seconds. Default: the task's graded length (20, 40, or 60~s). \\
-\code{--seed} & Seed of the object position and lighting randomization (default 42). Keep it fixed to compare checkpoints. \\
-\code{--num_envs} & Number of episodes simulated in parallel. \\
-\code{--headless} & Run without the GUI, which is faster. \\
-\bottomrule
-\end{longtable}
-
-An episode ends as soon as the \code{success} term of the evaluation file becomes true, or at the timeout. The script
-prints the episode length and action horizon in use at start, the success rate after every round, and the final
-success rate at the end. On an invalid flag value it prints the error and exits with a non-zero code.
 
 
 % ============================================================
