@@ -74,11 +74,19 @@ recording: [Adding a New Task](adding_new_task.md).
 
 ### 3.1 Requirements
 
-- A Linux machine with an NVIDIA GPU and driver (`nvidia-smi` must work).
-  Groups without one can use a cloud GPU; see
+- A Linux x86_64 machine with an NVIDIA RTX GPU (16 GB VRAM or more) and
+  driver 570 or newer (`nvidia-smi` must work). Groups without one can use a
+  cloud GPU; see
   [Cloud GPU Setup with GlowsAI](https://docs.google.com/presentation/d/1xPHm3gNNvLbX7aOWnY_xW5dfVLEa9XiBuskMbRsgxI8/edit?usp=sharing).
+  Recording and rollout render camera images, which needs a GPU with RT cores
+  (GeForce RTX, RTX A/Ada/PRO, L40S). Data-center GPUs without RT cores
+  (A100, H100, V100) cannot run them; such GPUs are only usable for training.
 - Git with submodule support.
-- Docker.
+- Docker and the
+  [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html),
+  which lets containers use the GPU (`docker run --gpus ...`). Without it,
+  the launch commands fail with
+  `could not select device driver "" with capabilities: [[gpu]]`.
 - [`uv`](https://docs.astral.sh/uv/), the Python package manager. The project
   uses Python 3.11 (`.python-version`).
 - A Hugging Face account and an access token
@@ -103,6 +111,22 @@ sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plug
 sudo usermod -aG docker $USER
 newgrp docker
 docker --version
+```
+
+The NVIDIA Container Toolkit is installed as follows:
+
+```bash
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list \
+  | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' \
+  | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+sudo apt-get update
+sudo apt-get install -y nvidia-container-toolkit
+sudo nvidia-ctk runtime configure --runtime=docker
+sudo systemctl restart docker
+
+# check: the GPU must be listed
+docker run --rm --gpus all ubuntu nvidia-smi
 ```
 
 ### 3.2 Fork and clone the repository
