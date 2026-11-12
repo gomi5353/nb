@@ -303,8 +303,8 @@ step 3 needs. The recorder keeps only the episodes that the task's success
 check accepts.
 
 [How to Record Episodes](how_to_record.md) explains the controller interface,
-the action format, the recorder, and gives a complete template of the
-collection script. A recording run inside the container looks like:
+the action format, the recorder, and the steps of the collection script with
+the tools used in each step. A recording run inside the container looks like:
 
 ```bash
 python scripts/collect_cup_stacking.py \
