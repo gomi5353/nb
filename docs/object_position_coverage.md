@@ -123,7 +123,7 @@ uv run python -c "import json; f=json.load(open('datasets/<HF_USER>/<repo_id>/me
 ```
 
 The output lists one key per tracked object. An empty list means that the
-dataset was recorded with leisaac's recorder and has to be recorded again.
+dataset was recorded with LeIsaac's recorder and has to be recorded again.
 
 ## 3. Write the specification
 
@@ -300,7 +300,7 @@ once coverage is reached.
 
 | Message | Cause | Fix |
 |---|---|---|
-| `meta/info.json declares no 'object_position.<name>' features` | Dataset recorded with leisaac's recorder instead of the repository's | Record again with the repository recorder ([How to Record Episodes §5.2](how_to_record.md#52-the-repositorys-recorder-and-object-positions)) |
+| `meta/info.json declares no 'object_position.<name>' features` | Dataset recorded with LeIsaac's recorder instead of the repository's | Record again with the repository recorder ([How to Record Episodes §5.2](how_to_record.md#52-the-repositorys-recorder-and-object-positions)) |
 | `Dataset has no 'object_position.<name>' column, which the spec requires` | Block for an object that was not recorded, or a typo in `cp:name` | Fix the name or delete the block |
 | `Spec still has TODO values: ...` | Unfilled fields | Fill them in ([section 3.2](#32-one-object-block)) |
 | `... must be a number without quotes, got "8.8"` | Quoted number | Write `8.8`, not `"8.8"` |

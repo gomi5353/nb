@@ -297,7 +297,7 @@ check, and task text. Advanced Level groups that define their own task follow
 Students write a **collection entry point**: one Python script containing a
 data-collection controller and a recording loop. The loop connects the
 controller to the Isaac Lab environment and to the repository's
-`LeRobotRecorderManager`. leisaac's original recorder must not be used,
+`LeRobotRecorderManager`. LeIsaac's original recorder must not be used,
 because only the repository's recorder also stores each object's position, which
 step 3 needs. The recorder keeps only the episodes that the task's success
 check accepts.

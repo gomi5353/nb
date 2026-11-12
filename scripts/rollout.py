@@ -531,7 +531,7 @@ def open_rollout_log(env_cfg, task_id: str, env) -> RolloutLogWriter:
     """Start the per-episode log outputs/rollout/<timestamp>.jsonl, read by `verify_object_position_coverage.py compare`.
 
     Call after the first reset: the header records the robot base and fixed object poses, which never change.
-    Warns when the eval file's rollout range file is missing or stale.
+    It also records the eval file path and its SHA-256, so a log can be traced back to the exact eval settings.
     """
     eval_file = _repo_relative(inspect.getsourcefile(type(env_cfg)))
     eval_sha = file_sha256(eval_file)
